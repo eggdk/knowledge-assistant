@@ -4,9 +4,10 @@ BUAA course project: an embeddable knowledge-base Q&A assistant.
 
 This repository now has a **local MD/TXT import and browser-upload API
 foundation**. It can create a knowledge base, import selected local files or
-uploaded files, track changed versions, and prepare traceable MD/TXT chunks.
-It does not yet retrieve passages, answer questions, cite sources, provide a
-web page, or integrate with Agent Insight.
+uploaded files, track changed versions, prepare traceable MD/TXT chunks, and
+try a CLI-only keyword retrieval baseline. It does not yet provide an end-user
+search API, answer questions, cite sources, provide a web page, or integrate
+with Agent Insight.
 
 ## Backend setup (Windows PowerShell)
 
@@ -40,6 +41,7 @@ From `apps/api`, create a knowledge base and copy its printed `kb_...` ID:
 & ..\..\.venv\Scripts\python.exe -m app.cli import --kb YOUR_KB_ID --dir ..\..\examples\sample_docs
 & ..\..\.venv\Scripts\python.exe -m app.cli docs list --kb YOUR_KB_ID
 & ..\..\.venv\Scripts\python.exe -m app.cli chunks list --kb YOUR_KB_ID
+& ..\..\.venv\Scripts\python.exe -m app.cli search --kb YOUR_KB_ID --query "自动回答问题"
 ```
 
 The team chose to keep original files by default: exact source bytes are saved
@@ -65,3 +67,6 @@ For the import flow and commands, read
 For the next search-preparation step, read
 [Backend lesson 04](docs/learning/04-text-chunks.md) and
 [chunking decision 0004](docs/decisions/0004-mdtxt-chunking.md).
+For the first CLI-only retrieval baseline, read
+[Backend lesson 05](docs/learning/05-keyword-search.md) and
+[retrieval decision 0005](docs/decisions/0005-keyword-baseline.md).

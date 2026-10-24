@@ -35,6 +35,12 @@ def test_cli_create_import_and_list(tmp_path, capsys) -> None:
     assert main(database_arg + ["chunks", "list", "--kb", kb_id]) == 0
     assert "readme.md\tv1\tchunk 1\tL1-L1" in capsys.readouterr().out
 
+    assert main(database_arg + ["search", "--kb", kb_id, "--query", "hello"]) == 0
+    assert "readme.md v1 L1-L1" in capsys.readouterr().out
+
+    assert main(database_arg + ["search", "--kb", kb_id, "--query", "missing"]) == 0
+    assert "No matching source chunks found." in capsys.readouterr().out
+
     # The team's chosen default keeps a byte-for-byte original copy.
     with sqlite3.connect(database) as connection:
         saved_bytes = connection.execute(

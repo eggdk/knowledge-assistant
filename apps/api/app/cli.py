@@ -11,6 +11,7 @@ from app.knowledge_store import (
     list_documents,
     list_knowledge_bases,
 )
+from app.retrieval import search_knowledge_base
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     chunk_commands = chunks.add_subparsers(dest="chunks_command", required=True)
     chunk_listing = chunk_commands.add_parser("list")
     chunk_listing.add_argument("--kb", required=True)
+
+    search = commands.add_parser("search", help="Try keyword retrieval locally")
+    search.add_argument("--kb", required=True)
+    search.add_argument("--query", required=True)
+    search.add_argument("--limit", type=int, default=5)
     return parser
 
 
@@ -85,6 +91,20 @@ def main(argv: list[str] | None = None) -> int:
                     f"\tchunk {chunk.chunk_no}\tL{chunk.start_line}-L{chunk.end_line}"
                     f"\t{len(chunk.content)} chars\t{chunk.heading}"
                 )
+        elif args.command == "search":
+            hits = search_knowledge_base(
+                args.db, args.kb, args.query, limit=args.limit
+            )
+            for rank, hit in enumerate(hits, start=1):
+                chunk = hit.chunk
+                excerpt = " ".join(chunk.content.split())[:120]
+                print(
+                    f"{rank}. {chunk.relative_path} v{chunk.version_no} "
+                    f"L{chunk.start_line}-L{chunk.end_line} "
+                    f"score={hit.score:.4f}\n   {excerpt}"
+                )
+            if not hits:
+                print("No matching source chunks found.")
     except ValueError as exc:
         parser.error(str(exc))
     return 0
