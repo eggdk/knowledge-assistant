@@ -1,2 +1,67 @@
-# knowledge-assistant
-BUAA Course project: embeddable knowledge-base Q&amp;A assistant
+# Knowledge Assistant
+
+BUAA course project: an embeddable knowledge-base Q&A assistant.
+
+This repository now has a **local MD/TXT import and browser-upload API
+foundation**. It can create a knowledge base, import selected local files or
+uploaded files, track changed versions, and prepare traceable MD/TXT chunks.
+It does not yet retrieve passages, answer questions, cite sources, provide a
+web page, or integrate with Agent Insight.
+
+## Backend setup (Windows PowerShell)
+
+Use Python 3.12. From the repository root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r apps/api/requirements.txt
+Set-Location apps/api
+& ..\..\.venv\Scripts\python.exe -m pytest
+& ..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open <http://127.0.0.1:8000/health> to check the API, or
+<http://127.0.0.1:8000/docs> to see FastAPI's interactive API documentation.
+Use `Ctrl+C` to stop the server.
+
+The `/docs` page now lets you create a knowledge base and upload MD/TXT files
+without a separate frontend. See [Backend lesson 03](docs/learning/03-web-upload-api.md)
+for a guided walkthrough and the [A/B API handoff](docs/api/knowledge-base-v1.md)
+for exact requests and responses. An uploaded document is **stored but not yet
+searchable**; the API returns `searchable: false` until indexing is built.
+
+## Local MD/TXT import
+
+From `apps/api`, create a knowledge base and copy its printed `kb_...` ID:
+
+```powershell
+& ..\..\.venv\Scripts\python.exe -m app.cli kb create --name "Course demo"
+& ..\..\.venv\Scripts\python.exe -m app.cli kb list
+& ..\..\.venv\Scripts\python.exe -m app.cli import --kb YOUR_KB_ID --dir ..\..\examples\sample_docs
+& ..\..\.venv\Scripts\python.exe -m app.cli docs list --kb YOUR_KB_ID
+& ..\..\.venv\Scripts\python.exe -m app.cli chunks list --kb YOUR_KB_ID
+```
+
+The team chose to keep original files by default: exact source bytes are saved
+inside the local SQLite database alongside parsed text and source path. An
+explicit `--originals skip` is available for a special import where no original
+copy is wanted. Runtime data is saved in ignored `storage/`; do not commit
+private documents or the database.
+
+The `.venv/` directory is local to each developer and must not be committed.
+SQLite is used for knowledge bases, documents, and active document versions.
+Missing files from a later partial import are never deleted automatically.
+
+## Project decisions
+
+See [the first backend decision record](docs/decisions/0001-backend-foundation.md)
+for confirmed choices and remaining questions.
+See [the import decision record](docs/decisions/0002-local-import.md)
+for file identity, versioning, and original-copy policy.
+For a plain-language walkthrough of the first request and tests, read
+[Backend lesson 01](docs/learning/01-backend-foundation.md).
+For the import flow and commands, read
+[Backend lesson 02](docs/learning/02-local-import.md).
+For the next search-preparation step, read
+[Backend lesson 04](docs/learning/04-text-chunks.md) and
+[chunking decision 0004](docs/decisions/0004-mdtxt-chunking.md).
