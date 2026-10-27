@@ -1,0 +1,18 @@
+[
+  {"id": "P01", "question": "登录后一直不操作，什么时候会掉线？", "source": "account.md", "answer_text": "连续30分钟没有操作会自动退出"},
+  {"id": "P02", "question": "忘记密码后，邮箱里的链接能用多久？", "source": "account.md", "answer_text": "重置链接15分钟有效"},
+  {"id": "P03", "question": "密码输错太多次被锁住了找谁？", "source": "account.md", "answer_text": "请联系学院管理员解锁"},
+  {"id": "P04", "question": "平台能上传哪两种文件？", "source": "files.md", "answer_text": "只接受PDF和TXT文件"},
+  {"id": "P05", "question": "一份文件最大允许多少兆？", "source": "files.md", "answer_text": "单个文件上限为20 MB"},
+  {"id": "P06", "question": "同样的内容重复上传会再产生一个版本吗？", "source": "files.md", "answer_text": "相同内容不会生成新版本"},
+  {"id": "P07", "question": "学生账号能修改课程材料吗？", "source": "permissions.md", "answer_text": "学生只能阅读已发布资料"},
+  {"id": "P08", "question": "谁能把课程资料撤回？", "source": "permissions.md", "answer_text": "教师可以发布和撤回资料"},
+  {"id": "P09", "question": "分享出去的网址几天后过期？", "source": "permissions.md", "answer_text": "公开链接默认7天后失效"},
+  {"id": "P10", "question": "回答的出处会标出什么位置？", "source": "answers.md", "answer_text": "引用会显示文件名和页码"},
+  {"id": "P11", "question": "资料里根本找不到答案时机器人该怎么办？", "source": "answers.md", "answer_text": "没有查到依据时应该说明资料不足"},
+  {"id": "P12", "question": "点踩回答以后由谁检查？", "source": "answers.md", "answer_text": "差评会进入人工复核队列"},
+  {"id": "N01", "question": "校园停车位在哪里申请？", "source": null, "answer_text": null},
+  {"id": "N02", "question": "这个平台支持微信支付吗？", "source": null, "answer_text": null},
+  {"id": "N03", "question": "PDF文件的OCR识别支持哪些语言？", "source": null, "answer_text": null},
+  {"id": "N04", "question": "公开链接能设置访问密码吗？", "source": null, "answer_text": null}
+]

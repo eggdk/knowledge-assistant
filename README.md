@@ -70,3 +70,8 @@ For the next search-preparation step, read
 For the first CLI-only retrieval baseline, read
 [Backend lesson 05](docs/learning/05-keyword-search.md) and
 [retrieval decision 0005](docs/decisions/0005-keyword-baseline.md).
+To measure its actual misses and false matches on a small, fictional dataset,
+run `python -m app.evaluation` from `apps/api` and read
+[Backend lesson 06](docs/learning/06-retrieval-evaluation.md). The demo labels
+are separate from the imported documents; the results are not a course-quality
+claim or evidence that end-user answering is ready.
