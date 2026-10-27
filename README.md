@@ -2,6 +2,9 @@
 
 BUAA course project: an embeddable knowledge-base Q&A assistant.
 
+New to this repository? Start with the Chinese
+[A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
+
 This repository now has a **local MD/TXT import and browser-upload API
 foundation**. It can create a knowledge base, import selected local files or
 uploaded files, track changed versions, prepare traceable MD/TXT chunks, and
