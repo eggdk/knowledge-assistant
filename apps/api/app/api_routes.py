@@ -103,7 +103,13 @@ def get_documents(
 @router.post("/{kb_id}/documents/import", response_model=BatchUploadResponse)
 def upload_documents(
     kb_id: str,
-    files: Annotated[list[UploadFile], File(description="MD/TXT files to import")],
+    files: Annotated[
+        list[UploadFile],
+        File(
+            description="MD/TXT files to import",
+            json_schema_extra={"items": {"type": "string", "format": "binary"}},
+        ),
+    ],
     database_path: Annotated[Path, Depends(get_database_path)],
     relative_paths: Annotated[list[str] | None, Form()] = None,
 ) -> BatchUploadResponse:

@@ -18,6 +18,8 @@ Set-Location apps/api
 3. 再上传同一份文件，应看到 `unchanged`；到 `GET /api/knowledge-bases/{kb_id}/documents` 查看列表。
 4. `Ctrl+C` 停止服务器。数据库默认保存在仓库的 `storage/knowledge.sqlite3`，不会提交到 Git。
 
+`files` 必须通过浏览器的 **Choose Files / 选择文件** 按钮选取；在文本框里输入 `D:\...\intro.md` 只会把路径当作普通文字发送，后端会报 `Expected UploadFile, received: str`。如果刚更新代码后仍看到文本框，先停止并重新启动 Uvicorn，再强制刷新 `/docs`。正确选择文件后，页面自动生成的 Curl 示例中，文件名前会有 `@`；不用自己运行 Curl。
+
 ## 一次上传经过哪些代码
 
 `app/main.py` 接入路由 → `app/api_routes.py` 校验知识库和表单字段 → `app/knowledge_store.py` 调用与 CLI 共用的导入函数 → `app/text_parser.py` 解析正文 → SQLite 记录版本和原件 → API 把逐文件结果返回网页。

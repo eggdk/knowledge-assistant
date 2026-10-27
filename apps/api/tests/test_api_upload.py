@@ -28,6 +28,17 @@ def create_base(client: TestClient) -> str:
     return response.json()["id"]
 
 
+def test_upload_openapi_describes_file_picker_in_swagger(client) -> None:
+    http, _ = client
+    schema = http.get("/openapi.json").json()
+    operation = schema["paths"]["/api/knowledge-bases/{kb_id}/documents/import"]["post"]
+    body = operation["requestBody"]["content"]["multipart/form-data"]["schema"]
+    component = schema["components"]["schemas"][body["$ref"].rsplit("/", 1)[-1]]
+
+    assert component["properties"]["files"]["items"]["format"] == "binary"
+    assert "relative_paths" in component["properties"]
+
+
 def test_create_list_upload_repeat_update_and_list_documents(client) -> None:
     http, database = client
     kb_id = create_base(http)
