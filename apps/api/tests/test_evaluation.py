@@ -52,3 +52,35 @@ def test_duplicate_case_ids_are_rejected(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="unique"):
         load_cases(cases)
+
+
+def test_alternative_answer_span_counts_when_it_reaches_first_place(tmp_path) -> None:
+    dataset = tmp_path / "dataset"
+    (dataset / "docs").mkdir(parents=True)
+    (dataset / "docs" / "guide.md").write_text(
+        "# 指南\n## A\n旧表达。\n## B\n替代答案。", encoding="utf-8"
+    )
+    (dataset / "cases.json").write_text(
+        json.dumps([
+            {
+                "id": "P01",
+                "question": "替代答案",
+                "source": "guide.md",
+                "answer_text": "旧表达",
+                "also_accept": ["替代答案"],
+            }
+        ], ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    assert evaluate_dataset(dataset)[0].answer_rank == 1
+
+
+def test_pinned_agent_insight_labels_are_valid_and_retrievable() -> None:
+    dataset = DEFAULT_DATASET.parent / "agent_insight"
+    counts = summarize(evaluate_dataset(dataset))
+
+    assert counts["positive_total"] == 18
+    assert counts["negative_total"] == 5
+    assert counts["top1"] >= 9
+    assert counts["top5"] >= 17

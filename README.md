@@ -75,3 +75,9 @@ run `python -m app.evaluation` from `apps/api` and read
 [Backend lesson 06](docs/learning/06-retrieval-evaluation.md). The demo labels
 are separate from the imported documents; the results are not a course-quality
 claim or evidence that end-user answering is ready.
+For a first run on pinned public Agent Insight user-guide documents, run
+`python -m app.evaluation --dataset ../../evals/agent_insight` from `apps/api`.
+Read [Backend lesson 07](docs/learning/07-agent-insight-real-docs.md) and
+[the source manifest](evals/agent_insight/SOURCE.md) for provenance, scores,
+and the important limitation that the course task did not specify a particular
+Agent Insight repository version.

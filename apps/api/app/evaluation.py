@@ -24,6 +24,7 @@ class EvalCase:
     question: str
     source: str | None
     answer_text: str | None
+    also_accept: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -49,17 +50,22 @@ def load_cases(path: Path) -> list[EvalCase]:
         question = item.get("question")
         source = item.get("source")
         answer_text = item.get("answer_text")
+        also_accept = item.get("also_accept", [])
         if not isinstance(case_id, str) or not case_id.strip() or case_id in seen_ids:
             raise ValueError("Case IDs must be nonempty and unique")
         if not isinstance(question, str) or not question.strip():
             raise ValueError(f"Case {case_id} needs a question")
         if source is None:
-            if answer_text is not None:
-                raise ValueError(f"Negative case {case_id} must not have answer_text")
+            if answer_text is not None or also_accept:
+                raise ValueError(f"Negative case {case_id} must not have answer text")
         elif not isinstance(source, str) or not source.strip() or not isinstance(answer_text, str) or not answer_text.strip():
             raise ValueError(f"Positive case {case_id} needs source and answer_text")
+        if not isinstance(also_accept, list) or any(
+            not isinstance(text, str) or not text.strip() for text in also_accept
+        ):
+            raise ValueError(f"Case {case_id} needs a list of nonempty also_accept texts")
         seen_ids.add(case_id)
-        cases.append(EvalCase(case_id, question, source, answer_text))
+        cases.append(EvalCase(case_id, question, source, answer_text, tuple(also_accept)))
     return cases
 
 
@@ -75,14 +81,16 @@ def evaluate_dataset(dataset: Path) -> list[EvalResult]:
 
         chunks = list_active_chunks(database, kb_id)
         for case in cases:
-            if case.source is not None and not any(
-                chunk.relative_path == case.source and case.answer_text in chunk.content
-                for chunk in chunks
-            ):
-                raise ValueError(
-                    f"Case {case.case_id} label is absent from one source chunk: "
-                    f"{case.source} / {case.answer_text}"
-                )
+            if case.source is not None:
+                for answer_text in (case.answer_text, *case.also_accept):
+                    if not any(
+                        chunk.relative_path == case.source and answer_text in chunk.content
+                        for chunk in chunks
+                    ):
+                        raise ValueError(
+                            f"Case {case.case_id} label is absent from one source chunk: "
+                            f"{case.source} / {answer_text}"
+                        )
 
         results = []
         for case in cases:
@@ -92,8 +100,11 @@ def evaluate_dataset(dataset: Path) -> list[EvalResult]:
                     rank
                     for rank, hit in enumerate(hits, start=1)
                     if hit.chunk.relative_path == case.source
-                    and case.answer_text is not None
-                    and case.answer_text in hit.chunk.content
+                    and any(
+                        answer_text in hit.chunk.content
+                        for answer_text in (case.answer_text, *case.also_accept)
+                        if answer_text is not None
+                    )
                 ),
                 None,
             )
