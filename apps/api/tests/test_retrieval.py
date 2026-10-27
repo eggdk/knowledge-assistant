@@ -3,12 +3,18 @@
 import pytest
 
 from app.knowledge_store import create_knowledge_base, import_document
-from app.retrieval import search_knowledge_base, tokenize
+from app.retrieval import _search_words, search_knowledge_base, tokenize
 
 
 def test_tokenizer_handles_chinese_pairs_and_case_insensitive_latin() -> None:
     assert tokenize("登录失败 Error E102") == [
         "登录", "录失", "失败", "error", "e102"
+    ]
+
+
+def test_second_channel_keeps_chinese_words_without_cross_word_pair() -> None:
+    assert _search_words("登录失败 Error E102") == [
+        "登录", "失败", "error", "e102"
     ]
 
 

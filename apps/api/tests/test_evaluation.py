@@ -82,5 +82,5 @@ def test_pinned_agent_insight_labels_are_valid_and_retrievable() -> None:
 
     assert counts["positive_total"] == 18
     assert counts["negative_total"] == 5
-    assert counts["top1"] >= 9
+    assert counts["top1"] >= 12
     assert counts["top5"] >= 17

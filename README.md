@@ -81,3 +81,9 @@ Read [Backend lesson 07](docs/learning/07-agent-insight-real-docs.md) and
 [the source manifest](evals/agent_insight/SOURCE.md) for provenance, scores,
 and the important limitation that the course task did not specify a particular
 Agent Insight repository version.
+The local CLI keyword ranker now combines the original Chinese bigram channel
+with a pinned local `jieba` search-word channel. Read
+[Backend lesson 08](docs/learning/08-local-retrieval-improvement.md) and
+[decision 0006](docs/decisions/0006-local-hybrid-keyword-search.md) for the
+before/after evaluation and remaining misses. This is still diagnostic
+retrieval, not a user-facing answer feature.
