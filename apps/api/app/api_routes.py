@@ -115,6 +115,9 @@ def upload_documents(
 ) -> BatchUploadResponse:
     """Upload selected files; each parse failure is reported independently."""
     _require_knowledge_base(database_path, kb_id)
+    # Swagger sends one empty form field when its optional path box is left blank.
+    if relative_paths == [""]:
+        relative_paths = None
     if len(files) > MAX_FILES_PER_REQUEST:
         raise HTTPException(status_code=422, detail="Too many files in one request")
     if relative_paths is not None and len(relative_paths) != len(files):

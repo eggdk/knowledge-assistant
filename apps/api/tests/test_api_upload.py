@@ -39,6 +39,20 @@ def test_upload_openapi_describes_file_picker_in_swagger(client) -> None:
     assert "relative_paths" in component["properties"]
 
 
+def test_browser_form_upload_with_blank_optional_path_uses_filename(client) -> None:
+    http, _ = client
+    kb_id = create_base(http)
+    response = http.post(
+        f"/api/knowledge-bases/{kb_id}/documents/import",
+        files={"files": ("intro.md", b"# Example", "text/markdown")},
+        data={"relative_paths": ""},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["files"][0]["relative_path"] == "intro.md"
+    assert response.json()["files"][0]["status"] == "created"
+
+
 def test_create_list_upload_repeat_update_and_list_documents(client) -> None:
     http, database = client
     kb_id = create_base(http)
