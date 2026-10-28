@@ -3,6 +3,7 @@
 BUAA course project: an embeddable knowledge-base Q&A assistant.
 
 New to this repository? Start with the Chinese
+[project architecture map](docs/learning/00-project-architecture.md), then follow the
 [A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
 
 This repository now has a **local MD/TXT import and browser-upload API
