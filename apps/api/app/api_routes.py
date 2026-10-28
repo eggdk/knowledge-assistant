@@ -106,14 +106,20 @@ def upload_documents(
     files: Annotated[
         list[UploadFile],
         File(
-            description="MD/TXT files to import",
+            description=(
+                "点击“选择文件”选取本机的 .md 或 .txt 文件；"
+                "不要在文本框中粘贴文件路径。需要多选时点击 Add string item。"
+            ),
             json_schema_extra={"items": {"type": "string", "format": "binary"}},
         ),
     ],
     database_path: Annotated[Path, Depends(get_database_path)],
-    relative_paths: Annotated[list[str] | None, Form()] = None,
+    relative_paths: Annotated[
+        list[str] | None,
+        Form(description="普通文件上传请留空；仅需保留文件夹层级时才逐个填写相对路径。"),
+    ] = None,
 ) -> BatchUploadResponse:
-    """Upload selected files; each parse failure is reported independently."""
+    """从浏览器上传文件内容到知识库。先填 kb_id，再选文件并点 Execute。"""
     _require_knowledge_base(database_path, kb_id)
     # Swagger sends one empty form field when its optional path box is left blank.
     if relative_paths == [""]:
