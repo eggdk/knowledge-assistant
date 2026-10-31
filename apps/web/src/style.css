@@ -1,0 +1,28 @@
+:root { font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; color: #203654; background: transparent; font-synthesis: none; }
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+button, textarea { font: inherit; }
+button:focus-visible, textarea:focus-visible { outline: 3px solid #88b7ff; outline-offset: 3px; }
+.widget { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-end; gap: 12px; }
+.launcher { flex: 0 0 56px; width: 56px; height: 56px; margin: 4px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: white; background: #276be8; box-shadow: 0 5px 15px #2055ae55; cursor: pointer; }
+.launcher:hover { background: #155ad4; }
+.panel { min-height: 0; width: calc(100% - 8px); margin: 4px 4px 0; flex: 1; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce8f8; border-radius: 18px; background: white; box-shadow: 0 6px 20px #153b752b; }
+.panel-header { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 18px 18px; color: white; background: linear-gradient(120deg, #2369e5, #4b91f3); }
+.header-icon { width: 40px; height: 40px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 12px; background: #ffffff2e; }
+.header-copy { min-width: 0; flex: 1; }
+.header-copy h1 { margin: 0; font-size: 16px; line-height: 1.4; }
+.header-copy p { margin: 3px 0 0; font-size: 12px; color: #e1edff; }
+.close-button { width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center; border: 0; border-radius: 8px; color: white; background: transparent; cursor: pointer; }
+.close-button:hover { background: #ffffff26; }
+.panel-content { min-height: 0; flex: 1; overflow-y: auto; padding: 28px 24px 18px; text-align: center; }
+.welcome-icon { width: 62px; height: 62px; margin: 0 auto 17px; display: grid; place-items: center; border-radius: 19px; color: #2d70e8; background: #edf4ff; }
+.panel-content h2 { margin: 0 0 9px; font-size: 17px; line-height: 1.5; color: #193354; }
+.panel-content > p { margin: 0 auto; max-width: 270px; color: #77879c; font-size: 13px; line-height: 1.8; }
+.composer { flex: 0 0 auto; padding: 13px 16px 14px; border-top: 1px solid #edf1f7; background: #fff; }
+.composer label { display: block; margin-bottom: 7px; color: #4c617c; font-size: 12px; font-weight: 600; }
+.input-box { display: flex; align-items: flex-end; gap: 8px; padding: 10px; border: 1px solid #dfe8f3; border-radius: 11px; background: #fbfdff; }
+.input-box:focus-within { border-color: #76a9f6; }
+textarea { width: 100%; min-width: 0; resize: none; border: 0; outline: 0; background: transparent; color: #294263; font-size: 13px; line-height: 1.6; }
+textarea::placeholder { color: #a5b2c3; }
+.send-button { flex: 0 0 32px; width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; color: #a5b7d1; background: #e8eff8; cursor: not-allowed; }
+.preview-note { margin: 8px 0 0; text-align: center; color: #8998ab; font-size: 11px; }
