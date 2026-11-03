@@ -9,6 +9,8 @@
   if ((widgetUrl.protocol !== 'https:' && widgetUrl.protocol !== 'http:') ||
       (window.location.protocol !== 'https:' && window.location.protocol !== 'http:')) return;
   widgetUrl.searchParams.set('hostOrigin', hostOrigin);
+  var kbId = script.dataset.kbId && script.dataset.kbId.trim();
+  if (kbId) widgetUrl.searchParams.set('kbId', kbId);
 
   function mount() {
     if (document.getElementById('knowledge-assistant-embed')) return;

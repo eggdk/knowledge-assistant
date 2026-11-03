@@ -89,8 +89,12 @@ Windows PowerShell 中若 `pnpm` 被解析为不可执行的脚本，可以使�
 将 `dist/` 全部文件放到可访问的静态目录，保留 `embed.js`、`widget.html` 与 `assets/` 之间的目录关系。宿主添加一条脚本标签，并把示例地址替换为实际的插件地址：
 
 ```html
-<script src="https://example.com/knowledge-assistant/embed.js" defer></script>
+<script src="https://example.com/knowledge-assistant/embed.js" data-kb-id="kb_本网站的知识库ID" defer></script>
 ```
+
+每个宿主网页在 `data-kb-id` 中配置**它要查询的一个知识库**。ID 由该环境的建库/列库接口取得；不同电脑的本地数据库会产生不同 ID，不要把某个人电脑的真实 ID 提交到仓库。加载脚本会把 ID 传到 iframe 的 `widget.html?kbId=...`；插件页面目前已读取该参数，未配置时显示提示，发送按钮仍禁用。B 岗接发送按钮时直接使用 `src/main.tsx` 中的 `kbId`；没有 ID 就不发送请求。知识库 ID 只是路由参数，不是访问凭证。
+
+本目录的演示页可以用 `http://127.0.0.1:5173/?kbId=你的本机知识库ID` 测试配置，不用编辑共享文件。这个查询参数**只用于演示页**；真正接入其他网站时在脚本标签设置 `data-kb-id`。
 
 宿主不需要安装 React。加载脚本会根据自身地址找到同目录的 `widget.html`，支持静态资源部署到子路径。iframe 隔离内部样式，外围容器使用 Shadow DOM；重复加载只保留一个实例。宿主需允许加载相应脚本和 iframe。
 

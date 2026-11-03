@@ -28,6 +28,7 @@ function getHostOrigin(): string | null {
 }
 
 const hostOrigin = getHostOrigin()
+const kbId = new URLSearchParams(window.location.search).get('kbId')?.trim() || null
 const messageType = 'knowledge-assistant:state'
 
 function Launcher({ open, buttonRef, onToggle }: { open: boolean; buttonRef: Ref<HTMLButtonElement>; onToggle: () => void }) {
@@ -51,7 +52,7 @@ function Composer() {
       <textarea id="question" rows={2} placeholder="输入你想了解的问题…" />
       <button type="button" className="send-button" disabled aria-label="发送问题（暂不可用）"><Icon name="send" size={18} /></button>
     </div>
-    <p className="preview-note">当前为界面预览，暂不支持提问</p>
+    <p className="preview-note">{kbId ? '当前为界面预览，暂不支持提问' : '未配置知识库，暂不支持提问'}</p>
   </div>
 }
 

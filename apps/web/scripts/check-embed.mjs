@@ -17,7 +17,10 @@ const makeElement = (tag) => ({
   ...(tag === 'iframe' ? { contentWindow: frameWindow } : {}),
 })
 const document = {
-  currentScript: { src: 'https://widget.example/subpath/embed.js' },
+  currentScript: {
+    src: 'https://widget.example/subpath/embed.js',
+    dataset: { kbId: 'kb_0123456789abcdef0123456789abcdef' },
+  },
   readyState: 'complete',
   createElement: makeElement,
   getElementById: (id) => elements.get(id),
@@ -35,7 +38,7 @@ assert.equal(elements.size, 1, '重复加载只创建一个实例')
 const host = elements.get('knowledge-assistant-embed')
 const frame = host.shadowRoot.children.find((child) => child.tag === 'iframe')
 const url = new URL(frame.src)
-assert.equal(url.href, 'https://widget.example/subpath/widget.html?hostOrigin=https%3A%2F%2Fhost.example')
+assert.equal(url.href, 'https://widget.example/subpath/widget.html?hostOrigin=https%3A%2F%2Fhost.example&kbId=kb_0123456789abcdef0123456789abcdef')
 frame.onload()
 assert.equal(sent[0][1], 'https://widget.example')
 const valid = { origin: 'https://widget.example', source: frameWindow, data: { type: 'knowledge-assistant:state', open: true } }
@@ -58,4 +61,12 @@ assert.equal(elements.size, 0, '卸载后移除插件')
 assert.equal(listeners.message, undefined, '卸载后移除消息监听')
 vm.runInContext(code, context)
 assert.equal(elements.size, 1, '卸载后可重新加载')
+const remountedFrame = elements.get('knowledge-assistant-embed').shadowRoot.children.find((child) => child.tag === 'iframe')
+assert.equal(new URL(remountedFrame.src).searchParams.get('kbId'), 'kb_0123456789abcdef0123456789abcdef')
+remountedFrame['onload']()
+elements.get('knowledge-assistant-embed')['onknowledge-assistant:dispose']()
+document.currentScript.dataset.kbId = ''
+vm.runInContext(code, context)
+const unconfiguredFrame = elements.get('knowledge-assistant-embed').shadowRoot.children.find((child) => child.tag === 'iframe')
+assert.equal(new URL(unconfiguredFrame.src).searchParams.has('kbId'), false, '未配置时不伪造知识库 ID')
 console.log('embed 边界检查通过')

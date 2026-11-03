@@ -21,7 +21,11 @@
       pre { overflow: auto; padding: 18px; border-radius: 10px; background: #f2f6fc; color: #30517c; font-size: 13px; }
       .note { color: #6b7a90; font-size: 14px; }
     </style>
-    <script src="./embed.js" defer></script>
+    <script id="knowledge-assistant-loader" src="./embed.js" defer></script>
+    <script>
+      const kbId = new URLSearchParams(window.location.search).get('kbId')?.trim();
+      if (kbId) document.getElementById('knowledge-assistant-loader').dataset.kbId = kbId;
+    </script>
   </head>
   <body>
     <header><div class="bar"><span class="mark" aria-hidden="true">知</span>知识助手 <span class="note">/ 嵌入演示</span></div></header>
@@ -32,7 +36,8 @@
       <section class="card">
         <h2>在网页中接入</h2>
         <p>将插件静态文件部署到可访问的地址后，在网页中添加一行脚本：</p>
-        <pre><code>&lt;script src="https://插件静态文件地址/embed.js" defer&gt;&lt;/script&gt;</code></pre>
+        <pre><code>&lt;script src="https://插件静态文件地址/embed.js" data-kb-id="kb_本网站的知识库ID" defer&gt;&lt;/script&gt;</code></pre>
+        <p class="note">本地演示可在页面网址后加 <code>?kbId=你在本机创建的知识库ID</code>，无需修改共享代码。</p>
         <p class="note">当前仅供界面预览，暂不支持提问，也未连接知识库或后端服务。</p>
       </section>
     </main>
