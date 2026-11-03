@@ -15,6 +15,7 @@ from app.knowledge_store import (
     list_knowledge_bases,
     validate_relative_path,
 )
+from app.retrieval import search_knowledge_base
 from app.text_parser import DocumentParseError
 
 
@@ -53,6 +54,29 @@ class FileUploadResult(BaseModel):
 class BatchUploadResponse(BaseModel):
     files: list[FileUploadResult]
     failed: int
+
+
+class AskQuestionRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class SourceMatchView(BaseModel):
+    chunk_id: str
+    relative_path: str
+    version_no: int
+    start_line: int
+    end_line: int
+    heading: str
+    content: str
+    score: float
+
+
+class AskQuestionResponse(BaseModel):
+    question: str
+    answer: str | None = None
+    answer_status: Literal["not_generated"] = "not_generated"
+    matches: list[SourceMatchView]
 
 
 def _require_knowledge_base(database_path: Path, kb_id: str) -> None:
@@ -98,6 +122,37 @@ def get_documents(
         )
         for record in list_document_records(database_path, kb_id)
     ]
+
+
+@router.post("/{kb_id}/questions", response_model=AskQuestionResponse)
+def ask_question(
+    kb_id: str,
+    request: AskQuestionRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> AskQuestionResponse:
+    """Accept a question and return candidate source passages, not an answer."""
+    _require_knowledge_base(database_path, kb_id)
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Question must not be blank")
+
+    hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
+    return AskQuestionResponse(
+        question=question,
+        matches=[
+            SourceMatchView(
+                chunk_id=hit.chunk.chunk_id,
+                relative_path=hit.chunk.relative_path,
+                version_no=hit.chunk.version_no,
+                start_line=hit.chunk.start_line,
+                end_line=hit.chunk.end_line,
+                heading=hit.chunk.heading,
+                content=hit.chunk.content,
+                score=hit.score,
+            )
+            for hit in hits
+        ],
+    )
 
 
 @router.post("/{kb_id}/documents/import", response_model=BatchUploadResponse)

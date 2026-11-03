@@ -6,12 +6,13 @@ New to this repository? Start with the Chinese
 [project architecture map](docs/learning/00-project-architecture.md), then follow the
 [A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
 
-This repository now has a **local MD/TXT import and browser-upload API
-foundation**. It can create a knowledge base, import selected local files or
-uploaded files, track changed versions, prepare traceable MD/TXT chunks, and
-try a CLI-only keyword retrieval baseline. It does not yet provide an end-user
-search API, answer questions, cite sources, provide a web page, or integrate
-with Agent Insight.
+This repository has a **local MD/TXT import and browser-upload API**, a
+traceable keyword retrieval baseline, and a static embeddable web-widget
+preview. The backend also accepts a question and returns matching source
+passages through [the question API v1](docs/api/question-retrieval-v1.md).
+It does not yet generate answers, verify citations, support multi-turn chat,
+or integrate with Agent Insight. The widget's send button remains disabled
+until the frontend is connected to that API.
 
 ## Backend setup (Windows PowerShell)
 

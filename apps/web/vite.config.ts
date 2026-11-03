@@ -5,6 +5,11 @@ import { resolve } from 'node:path'
 export default defineConfig({
   base: './',
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:8000',
+    },
+  },
   build: {
     rollupOptions: {
       input: {
