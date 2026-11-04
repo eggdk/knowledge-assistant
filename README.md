@@ -5,17 +5,18 @@ BUAA course project: an embeddable knowledge-base Q&A assistant.
 New to this repository? Start with the Chinese
 [project architecture map](docs/learning/00-project-architecture.md), then follow the
 [A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
+For the current team handoff, read the [November 4 evening report](docs/2026-11-04-evening-handoff.md).
 
 This repository has a **local MD/TXT import and browser-upload API**, a
-traceable keyword retrieval baseline, and a static embeddable web-widget
-preview. The backend also accepts a question and returns matching source
+traceable keyword retrieval baseline, and an embeddable web widget connected to
+the local answer API. The backend also accepts a question and returns matching source
 passages through [the question API v1](docs/api/question-retrieval-v1.md).
 An optional [Qwen answer API](docs/api/answer-generation-v1.md) now generates a
 single-turn answer from those passages when a backend `DASHSCOPE_API_KEY` is
 configured. It checks that cited passages came from the retrieval result;
 answer correctness still needs evaluation. Multi-turn chat and Agent Insight
-integration remain future work. The widget's send button remains disabled
-until the frontend is connected to the question API.
+integration remain future work. The widget can send a question and display an
+answer with source passages, or show retrieved passages when no model key is set.
 For a capped three-question real-model check on public Agent Insight docs,
 follow [the Qwen smoke-test lesson](docs/learning/10-real-qwen-smoke.md).
 
@@ -38,8 +39,8 @@ Use `Ctrl+C` to stop the server.
 The `/docs` page now lets you create a knowledge base and upload MD/TXT files
 without a separate frontend. See [Backend lesson 03](docs/learning/03-web-upload-api.md)
 for a guided walkthrough and the [A/B API handoff](docs/api/knowledge-base-v1.md)
-for exact requests and responses. An uploaded document is **stored but not yet
-searchable**; the API returns `searchable: false` until indexing is built.
+for exact requests and responses. The `searchable: false` field in the current
+upload response is stale and should not be used as a UI indication of indexing.
 
 ## Local MD/TXT import
 
