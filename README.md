@@ -10,9 +10,12 @@ This repository has a **local MD/TXT import and browser-upload API**, a
 traceable keyword retrieval baseline, and a static embeddable web-widget
 preview. The backend also accepts a question and returns matching source
 passages through [the question API v1](docs/api/question-retrieval-v1.md).
-It does not yet generate answers, verify citations, support multi-turn chat,
-or integrate with Agent Insight. The widget's send button remains disabled
-until the frontend is connected to that API.
+An optional [Qwen answer API](docs/api/answer-generation-v1.md) now generates a
+single-turn answer from those passages when a backend `DASHSCOPE_API_KEY` is
+configured. It checks that cited passages came from the retrieval result;
+answer correctness still needs evaluation. Multi-turn chat and Agent Insight
+integration remain future work. The widget's send button remains disabled
+until the frontend is connected to the question API.
 
 ## Backend setup (Windows PowerShell)
 

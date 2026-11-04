@@ -6,6 +6,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from app.answer_generation import (
+    MODEL_NAME,
+    ModelAnswerError,
+    ModelNotConfigured,
+    generate_answer,
+)
 from app.config import get_database_path
 from app.knowledge_store import (
     create_knowledge_base,
@@ -15,7 +21,7 @@ from app.knowledge_store import (
     list_knowledge_bases,
     validate_relative_path,
 )
-from app.retrieval import search_knowledge_base
+from app.retrieval import SearchHit, search_knowledge_base
 from app.text_parser import DocumentParseError
 
 
@@ -79,6 +85,19 @@ class AskQuestionResponse(BaseModel):
     matches: list[SourceMatchView]
 
 
+class GenerateAnswerRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=5, ge=1, le=8)
+
+
+class GenerateAnswerResponse(BaseModel):
+    question: str
+    answer: str
+    answer_status: Literal["generated", "insufficient_evidence"]
+    model: str | None
+    citations: list[SourceMatchView]
+
+
 def _require_knowledge_base(database_path: Path, kb_id: str) -> None:
     if not knowledge_base_exists(database_path, kb_id):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
@@ -139,19 +158,49 @@ def ask_question(
     hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
     return AskQuestionResponse(
         question=question,
-        matches=[
-            SourceMatchView(
-                chunk_id=hit.chunk.chunk_id,
-                relative_path=hit.chunk.relative_path,
-                version_no=hit.chunk.version_no,
-                start_line=hit.chunk.start_line,
-                end_line=hit.chunk.end_line,
-                heading=hit.chunk.heading,
-                content=hit.chunk.content,
-                score=hit.score,
-            )
-            for hit in hits
-        ],
+        matches=[_source_match(hit) for hit in hits],
+    )
+
+
+def _source_match(hit: SearchHit) -> SourceMatchView:
+    return SourceMatchView(
+        chunk_id=hit.chunk.chunk_id,
+        relative_path=hit.chunk.relative_path,
+        version_no=hit.chunk.version_no,
+        start_line=hit.chunk.start_line,
+        end_line=hit.chunk.end_line,
+        heading=hit.chunk.heading,
+        content=hit.chunk.content,
+        score=hit.score,
+    )
+
+
+@router.post("/{kb_id}/answers", response_model=GenerateAnswerResponse)
+def answer_question(
+    kb_id: str,
+    request: GenerateAnswerRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> GenerateAnswerResponse:
+    """Retrieve current evidence, then ask the configured model for one answer."""
+    _require_knowledge_base(database_path, kb_id)
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Question must not be blank")
+
+    hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
+    try:
+        result = generate_answer(question, hits)
+    except ModelNotConfigured as exc:
+        raise HTTPException(status_code=503, detail="Model API key is not configured") from exc
+    except ModelAnswerError as exc:
+        raise HTTPException(status_code=502, detail="Model could not produce a valid answer") from exc
+
+    return GenerateAnswerResponse(
+        question=question,
+        answer=result.answer,
+        answer_status=result.status,
+        model=MODEL_NAME if hits else None,
+        citations=[_source_match(hit) for hit in result.cited_hits],
     )
 
 
