@@ -64,6 +64,7 @@ def test_model_receives_evidence_and_returns_only_retrieved_citation(monkeypatch
     assert answer.status == "generated"
     assert answer.answer == "在 Trace 页面查看。"
     assert [hit.chunk.chunk_id for hit in answer.cited_hits] == ["chk_example"]
+    assert answer.citation_ids == ["S1"]
     assert answer.usage == {"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155}
 
 
@@ -79,6 +80,18 @@ def test_model_cannot_cite_an_unretrieved_passage(monkeypatch) -> None:
         generate_answer("Trace 在哪里看？", [_hit()])
 
 
+def test_inline_citation_must_be_in_the_returned_citation_list(monkeypatch) -> None:
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-key")
+    monkeypatch.setattr(
+        "app.answer_generation.httpx.post",
+        lambda *args, **kwargs: _provider_response(
+            '{"status":"generated","answer":"答案 [S2]","citation_ids":["S1"]}'
+        ),
+    )
+    with pytest.raises(ModelAnswerError, match="missing from citation_ids"):
+        generate_answer("Trace 在哪里看？", [_hit()])
+
+
 def test_no_hits_never_calls_provider(monkeypatch) -> None:
     monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
     monkeypatch.setattr(
@@ -88,3 +101,4 @@ def test_no_hits_never_calls_provider(monkeypatch) -> None:
     answer = generate_answer("无关问题", [])
     assert answer.status == "insufficient_evidence"
     assert answer.cited_hits == []
+    assert answer.citation_ids == []

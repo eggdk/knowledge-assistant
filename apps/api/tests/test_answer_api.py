@@ -36,7 +36,7 @@ def test_answer_returns_model_text_and_current_source(client, monkeypatch) -> No
     def fake_generation(question, hits):
         assert question == "Trace 在哪里看？"
         assert len(hits) == 1
-        return GeneratedAnswer("在 Trace 页面查看调用记录。", "generated", hits)
+        return GeneratedAnswer("在 Trace 页面查看调用记录。", "generated", hits, ["S1"])
 
     monkeypatch.setattr("app.api_routes.generate_answer", fake_generation)
     response = client.post(
@@ -51,6 +51,7 @@ def test_answer_returns_model_text_and_current_source(client, monkeypatch) -> No
     assert len(body["citations"]) == 1
     assert body["citations"][0]["relative_path"] == "guide.md"
     assert body["citations"][0]["version_no"] == 1
+    assert body["citations"][0]["label"] == "S1"
 
     original = client.post(
         f"/api/knowledge-bases/{kb_id}/questions", json={"question": "Trace"}

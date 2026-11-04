@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -28,6 +29,7 @@ class GeneratedAnswer:
     answer: str
     status: Literal["generated", "insufficient_evidence"]
     cited_hits: list[SearchHit]
+    citation_ids: list[str]
     usage: dict[str, int] | None = None
 
 
@@ -38,7 +40,7 @@ def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
     factual grounding still needs evaluation against labeled questions.
     """
     if not hits:
-        return GeneratedAnswer(INSUFFICIENT_ANSWER, "insufficient_evidence", [])
+        return GeneratedAnswer(INSUFFICIENT_ANSWER, "insufficient_evidence", [], [])
 
     api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
     if not api_key:
@@ -111,7 +113,7 @@ def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
         raise ModelAnswerError("Model response must be a JSON object")
     status = data.get("status")
     if status == "insufficient_evidence":
-        return GeneratedAnswer(INSUFFICIENT_ANSWER, status, [], usage)
+        return GeneratedAnswer(INSUFFICIENT_ANSWER, status, [], [], usage)
     if status != "generated":
         raise ModelAnswerError("Model response has an invalid status")
 
@@ -123,8 +125,15 @@ def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
         raise ModelAnswerError("Model answer has no citations")
     if any(not isinstance(label, str) or label not in hit_by_label for label in citation_ids):
         raise ModelAnswerError("Model cited a passage outside the retrieved set")
+    inline_ids = set(re.findall(r"\[(S\d+)\]", answer))
+    if not inline_ids.issubset(citation_ids):
+        raise ModelAnswerError("Model answer contains a citation missing from citation_ids")
 
     unique_ids = list(dict.fromkeys(citation_ids))
     return GeneratedAnswer(
-        answer.strip(), "generated", [hit_by_label[label] for label in unique_ids], usage
+        answer.strip(),
+        "generated",
+        [hit_by_label[label] for label in unique_ids],
+        unique_ids,
+        usage,
     )

@@ -69,6 +69,13 @@ def main(argv: list[str] | None = None) -> int:
         print("最多调用模型三次；每次输出最多 600 Token。")
         for case, hits in selected:
             print(f"{case.case_id}: {case.question} | 检索到 {len(hits)} 个片段")
+            if args.dry_run:
+                for index, hit in enumerate(hits, start=1):
+                    chunk = hit.chunk
+                    print(
+                        f"  S{index}: {chunk.relative_path} "
+                        f"L{chunk.start_line}-{chunk.end_line}"
+                    )
         if args.dry_run:
             return 0
 
@@ -111,12 +118,13 @@ def main(argv: list[str] | None = None) -> int:
                     break
                 citations = [
                     {
+                        "label": label,
                         "file": hit.chunk.relative_path,
                         "version": hit.chunk.version_no,
                         "start_line": hit.chunk.start_line,
                         "end_line": hit.chunk.end_line,
                     }
-                    for hit in answer.cited_hits
+                    for label, hit in zip(answer.citation_ids, answer.cited_hits, strict=True)
                 ]
                 print(f"\n{case.case_id}: {answer.status}\n{answer.answer}")
                 print(f"引用：{citations}；Token 用量：{answer.usage}")

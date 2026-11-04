@@ -90,12 +90,16 @@ class GenerateAnswerRequest(BaseModel):
     limit: int = Field(default=5, ge=1, le=8)
 
 
+class CitationView(SourceMatchView):
+    label: str
+
+
 class GenerateAnswerResponse(BaseModel):
     question: str
     answer: str
     answer_status: Literal["generated", "insufficient_evidence"]
     model: str | None
-    citations: list[SourceMatchView]
+    citations: list[CitationView]
 
 
 def _require_knowledge_base(database_path: Path, kb_id: str) -> None:
@@ -200,7 +204,10 @@ def answer_question(
         answer=result.answer,
         answer_status=result.status,
         model=MODEL_NAME if hits else None,
-        citations=[_source_match(hit) for hit in result.cited_hits],
+        citations=[
+            CitationView(label=label, **_source_match(hit).model_dump())
+            for label, hit in zip(result.citation_ids, result.cited_hits, strict=True)
+        ],
     )
 
 
