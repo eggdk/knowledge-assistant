@@ -16,6 +16,8 @@ configured. It checks that cited passages came from the retrieval result;
 answer correctness still needs evaluation. Multi-turn chat and Agent Insight
 integration remain future work. The widget's send button remains disabled
 until the frontend is connected to the question API.
+For a capped three-question real-model check on public Agent Insight docs,
+follow [the Qwen smoke-test lesson](docs/learning/10-real-qwen-smoke.md).
 
 ## Backend setup (Windows PowerShell)
 

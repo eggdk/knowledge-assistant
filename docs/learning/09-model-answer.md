@@ -29,3 +29,5 @@ flowchart LR
 从仓库根目录进入 `apps/api`，运行 `..\..\.venv\Scripts\python.exe -m pytest`。测试通过只说明代码连接与约定行为成立。当前机器未配置真实 `DASHSCOPE_API_KEY`，因此还没有证明账号、网络和真实模型的回答质量。配置方法与返回格式见[答案接口契约](../api/answer-generation-v1.md)。
 
 下一步 A 岗用 Agent Insight 的真实资料准备“能回答、不能回答、容易误答”三类问题；B 岗按接口契约展示答案状态及引用。两人联调后再决定是否切换 DeepSeek 对照，或换更便宜的千问 Flash。
+
+真实账号准备好后，按[第 10 课：第一次真实千问联调](10-real-qwen-smoke.md)运行三题小实验；报告会留在本地 `storage/`，不会进入 Git。

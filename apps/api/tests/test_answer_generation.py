@@ -35,7 +35,10 @@ def _provider_response(content: str) -> httpx.Response:
     return httpx.Response(
         200,
         request=httpx.Request("POST", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"),
-        json={"choices": [{"finish_reason": "stop", "message": {"content": content}}]},
+        json={
+            "choices": [{"finish_reason": "stop", "message": {"content": content}}],
+            "usage": {"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155},
+        },
     )
 
 
@@ -61,6 +64,7 @@ def test_model_receives_evidence_and_returns_only_retrieved_citation(monkeypatch
     assert answer.status == "generated"
     assert answer.answer == "在 Trace 页面查看。"
     assert [hit.chunk.chunk_id for hit in answer.cited_hits] == ["chk_example"]
+    assert answer.usage == {"prompt_tokens": 120, "completion_tokens": 35, "total_tokens": 155}
 
 
 def test_model_cannot_cite_an_unretrieved_passage(monkeypatch) -> None:

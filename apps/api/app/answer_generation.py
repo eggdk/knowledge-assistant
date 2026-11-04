@@ -28,6 +28,7 @@ class GeneratedAnswer:
     answer: str
     status: Literal["generated", "insufficient_evidence"]
     cited_hits: list[SearchHit]
+    usage: dict[str, int] | None = None
 
 
 def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
@@ -95,14 +96,22 @@ def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
             raise ModelAnswerError("Model response was incomplete")
         content = choice["message"]["content"]
         data = json.loads(content)
+    except httpx.HTTPStatusError as exc:
+        raise ModelAnswerError(f"Model provider returned HTTP {exc.response.status_code}") from exc
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
         raise ModelAnswerError("Model request or response failed") from exc
 
+    raw_usage = result.get("usage") if isinstance(result, dict) else None
+    usage = (
+        {key: value for key, value in raw_usage.items() if isinstance(value, int)}
+        if isinstance(raw_usage, dict)
+        else None
+    )
     if not isinstance(data, dict):
         raise ModelAnswerError("Model response must be a JSON object")
     status = data.get("status")
     if status == "insufficient_evidence":
-        return GeneratedAnswer(INSUFFICIENT_ANSWER, status, [])
+        return GeneratedAnswer(INSUFFICIENT_ANSWER, status, [], usage)
     if status != "generated":
         raise ModelAnswerError("Model response has an invalid status")
 
@@ -116,4 +125,6 @@ def generate_answer(question: str, hits: list[SearchHit]) -> GeneratedAnswer:
         raise ModelAnswerError("Model cited a passage outside the retrieved set")
 
     unique_ids = list(dict.fromkeys(citation_ids))
-    return GeneratedAnswer(answer.strip(), "generated", [hit_by_label[label] for label in unique_ids])
+    return GeneratedAnswer(
+        answer.strip(), "generated", [hit_by_label[label] for label in unique_ids], usage
+    )
