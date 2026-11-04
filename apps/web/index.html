@@ -32,13 +32,13 @@
     <main>
       <div class="eyebrow">KNOWLEDGE ASSISTANT</div>
       <h1>让知识触手可及</h1>
-      <p class="lead">这是一个普通网页宿主演示。点击右下角的按钮，查看嵌入式知识助手的静态界面。</p>
+      <p class="lead">这是一个普通网页宿主演示。点击右下角按钮，向本地知识库提问，查看回答及引用原文。</p>
       <section class="card">
         <h2>在网页中接入</h2>
         <p>将插件静态文件部署到可访问的地址后，在网页中添加一行脚本：</p>
         <pre><code>&lt;script src="https://插件静态文件地址/embed.js" data-kb-id="kb_本网站的知识库ID" defer&gt;&lt;/script&gt;</code></pre>
         <p class="note">本地演示可在页面网址后加 <code>?kbId=你在本机创建的知识库ID</code>，无需修改共享代码。</p>
-        <p class="note">当前仅供界面预览，暂不支持提问，也未连接知识库或后端服务。</p>
+        <p class="note">本地联调需同时运行前端和后端。未配置模型密钥时，插件会展示检索到的原文，并明确标注“尚未生成答案”。</p>
       </section>
     </main>
   </body>

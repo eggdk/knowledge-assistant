@@ -1,5 +1,6 @@
 """HTTP contract for the teammate's first knowledge-base management page."""
 
+import logging
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -26,6 +27,7 @@ from app.text_parser import DocumentParseError
 
 
 router = APIRouter(prefix="/api/knowledge-bases", tags=["knowledge bases"])
+logger = logging.getLogger("uvicorn.error")
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 MAX_FILES_PER_REQUEST = 20
@@ -160,6 +162,7 @@ def ask_question(
         raise HTTPException(status_code=422, detail="Question must not be blank")
 
     hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
+    logger.info("retrieval kb=%s matches=%d", kb_id, len(hits))
     return AskQuestionResponse(
         question=question,
         matches=[_source_match(hit) for hit in hits],
@@ -195,9 +198,19 @@ def answer_question(
     try:
         result = generate_answer(question, hits)
     except ModelNotConfigured as exc:
+        logger.warning("answer kb=%s matches=%d model_key=missing", kb_id, len(hits))
         raise HTTPException(status_code=503, detail="Model API key is not configured") from exc
     except ModelAnswerError as exc:
+        logger.warning("answer kb=%s matches=%d model_result=invalid", kb_id, len(hits))
         raise HTTPException(status_code=502, detail="Model could not produce a valid answer") from exc
+
+    logger.info(
+        "answer kb=%s matches=%d status=%s citations=%d",
+        kb_id,
+        len(hits),
+        result.status,
+        len(result.citation_ids),
+    )
 
     return GenerateAnswerResponse(
         question=question,
