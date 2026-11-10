@@ -44,6 +44,9 @@ for exact requests and responses. Upload and document-list responses now report
 not model availability or guaranteed answer quality. Read the
 [November 10 backend update](docs/learning/11-search-status-and-retrieval-diagnostics.md)
 for the exact meaning and a reproducible broad-question retrieval failure.
+The [broad-question retrieval fix](docs/learning/12-broad-question-retrieval-fix.md)
+now recovers all three diagnostic passages in Top-5 while preserving the original
+development-set answer ranks; real-model answer quality still needs review.
 
 ## Local MD/TXT import
 

@@ -2,6 +2,8 @@
 
 状态：2026-11-03 已实现并测试。A/B 双方约定首版**只返回相关原文片段**，不生成模型答案。这个接口让插件能把用户的问题送到后端，也让前端能显示「找到的候选资料」。它不是课程要求的最终多轮问答。
 
+2026-11-10 更新：底层检索会清理少量通用问法并提升完整主题标题匹配，接口字段不变，返回的 `question` 保留原问题。`/answers` 同样使用该排序，见[检索修复说明](../learning/12-broad-question-retrieval-fix.md)。
+
 ## 请求
 
 `POST /api/knowledge-bases/{kb_id}/questions`，`Content-Type: application/json`。
@@ -81,7 +83,7 @@ async function askQuestion(kbId: string, question: string): Promise<QuestionResp
 
 **2026-11-03 对齐决定：**首版由每个宿主网页配置一个 `kbId`，访客不选库。宿主脚本标签使用 `data-kb-id="kb_..."`；`embed.js` 把它传入插件 iframe 的 `kbId` 查询参数。插件页面已经将该参数读入 `src/main.tsx` 的 `kbId`；B 岗接发送按钮时用它调用上面的 `askQuestion`。没有配置时不发送请求，页面已显示配置提示。演示宿主页可用 `/?kbId=本机的ID` 设置，不需要修改共享源码；不同电脑应使用各自本地建库得到的 ID。不要在网页里写入模型 API Key，也不要把 `kbId` 当作访问权限验证。
 
-上面的代理**只用于 Vite 本地开发**。构建后的插件若放到另一个域名或 Agent Insight 里，仍要为其部署环境配置同源 `/api` 反向代理，或商定受限的跨域规则；目前没有配置生产跨域。前端发送按钮在队友的 `app` 分支中仍是禁用的静态预览，需要 B 岗按此接口实现输入、加载、失败提示和结果列表。后端不负责替 B 岗直接修改聊天界面。
+上面的代理**只用于 Vite 本地开发**。构建后的插件若放到另一个域名或 Agent Insight 里，仍要为其部署环境配置同源 `/api` 反向代理，或商定受限的跨域规则；目前没有配置生产跨域。当前 `main` 中的插件已接通 `/answers`；缺少模型密钥时会改用本页的 `/questions` 展示候选原文，输入、加载和失败提示已接线。
 
 ## 联调通过标准
 

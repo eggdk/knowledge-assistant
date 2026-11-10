@@ -1,5 +1,7 @@
 """The answer endpoint uses retrieved evidence without changing question v1."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -71,6 +73,33 @@ def test_no_match_refuses_without_model_key(client, monkeypatch) -> None:
     assert body["answer_status"] == "insufficient_evidence"
     assert body["citations"] == []
     assert body["model"] is None
+
+
+def test_broad_question_delivers_experiment_entry_to_model_without_rewriting_question(client, monkeypatch) -> None:
+    kb_id = client.post("/api/knowledge-bases", json={"name": "公开资料"}).json()["id"]
+    docs = Path(__file__).resolve().parents[3] / "evals" / "agent_insight" / "docs"
+    upload = client.post(
+        f"/api/knowledge-bases/{kb_id}/documents/import",
+        files=[("files", (path.name, path.read_bytes(), "text/markdown")) for path in sorted(docs.glob("*.md"))],
+    )
+    assert upload.json()["failed"] == 0
+
+    def fake_generation(question, hits):
+        assert question == "Agent Insight 如何管理实验？"
+        label, hit = next(
+            (f"S{index}", hit) for index, hit in enumerate(hits, start=1)
+            if hit.chunk.relative_path == "experiments.md"
+            and "可以查看当前账号下的实验记录" in hit.chunk.content
+        )
+        return GeneratedAnswer("进入评估与实验中的实验页面。", "generated", [hit], [label])
+
+    monkeypatch.setattr("app.api_routes.generate_answer", fake_generation)
+    response = client.post(
+        f"/api/knowledge-bases/{kb_id}/answers",
+        json={"question": "Agent Insight 如何管理实验？"},
+    )
+    assert response.status_code == 200
+    assert response.json()["citations"][0]["start_line"] == 10
 
 
 def test_missing_key_and_invalid_requests(client, monkeypatch) -> None:

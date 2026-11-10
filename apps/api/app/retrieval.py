@@ -16,6 +16,8 @@ from app.knowledge_store import StoredChunk, knowledge_base_exists, list_active_
 
 
 _WORD = re.compile(r"[A-Za-z0-9_]+|[\u3400-\u9fff]+")
+_QUESTION_PHRASES = re.compile(r"请问|(?:如何|怎么)(?:管理|使用|操作)?")
+DOCUMENT_TITLE_BOOST = 2.0
 jieba.setLogLevel(logging.WARNING)
 
 
@@ -51,6 +53,29 @@ def _search_words(text: str) -> list[str]:
         else:
             terms.extend(segment for segment in jieba.cut_for_search(word) if len(segment) >= 2)
     return terms
+
+
+def _retrieval_query(query: str) -> str:
+    """Remove a small set of generic question phrases only for lexical ranking.
+
+    Preserve concrete actions (delete, export...), numbers and negation. The
+    original question still goes to the model and is returned by the API.
+    """
+    cleaned = _QUESTION_PHRASES.sub(" ", query).strip()
+    return cleaned if tokenize(cleaned) else query
+
+
+def _matches_document_title(query: str, heading: str) -> bool:
+    """Match a full top-level heading, not arbitrary descendant heading words."""
+    title = heading.split(" / ", 1)[0].strip()
+    if len(title) < 2:
+        return False
+    pattern = re.escape(title)
+    if title[0].isascii() and (title[0].isalnum() or title[0] == "_"):
+        pattern = r"(?<![A-Za-z0-9_])" + pattern
+    if title[-1].isascii() and (title[-1].isalnum() or title[-1] == "_"):
+        pattern += r"(?![A-Za-z0-9_])"
+    return re.search(pattern, query, flags=re.IGNORECASE) is not None
 
 
 def _bm25_scores(term_counts: list[Counter[str]], query_terms: set[str]) -> list[float]:
@@ -94,8 +119,9 @@ def search_knowledge_base(
     if not knowledge_base_exists(database_path, kb_id):
         raise ValueError(f"Unknown knowledge base: {kb_id}")
 
-    pair_terms = set(tokenize(query))
-    word_terms = set(_search_words(query))
+    ranking_query = _retrieval_query(query)
+    pair_terms = set(tokenize(ranking_query))
+    word_terms = set(_search_words(ranking_query))
     if not pair_terms and not word_terms:
         return []
 
@@ -111,6 +137,8 @@ def search_knowledge_base(
     hits: list[SearchHit] = []
     for chunk, pair_score, word_score in zip(chunks, pair_scores, word_scores, strict=True):
         score = pair_score + word_score
+        if _matches_document_title(ranking_query, chunk.heading):
+            score *= DOCUMENT_TITLE_BOOST
         if score > 0:
             hits.append(SearchHit(chunk, score))
 
