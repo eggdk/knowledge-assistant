@@ -54,6 +54,14 @@ def test_duplicate_case_ids_are_rejected(tmp_path) -> None:
         load_cases(cases)
 
 
+def test_diagnostic_questions_do_not_replace_the_fixed_benchmark() -> None:
+    dataset = DEFAULT_DATASET.parent / "agent_insight"
+    results = evaluate_dataset(dataset, cases_path=dataset / "diagnostic_cases.json")
+    assert [result.case.case_id for result in results] == ["B01", "B02", "B03"]
+    assert results[2].answer_rank is not None
+    assert len(load_cases(dataset / "cases.json")) == 23
+
+
 def test_alternative_answer_span_counts_when_it_reaches_first_place(tmp_path) -> None:
     dataset = tmp_path / "dataset"
     (dataset / "docs").mkdir(parents=True)

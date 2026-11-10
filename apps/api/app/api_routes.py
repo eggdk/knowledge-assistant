@@ -48,7 +48,9 @@ class DocumentView(BaseModel):
     version_no: int
     sha256: str
     imported_at: str
-    searchable: bool = False
+    searchable: bool = Field(
+        description="当前文档版本有当前策略的文本块可参与检索；不代表模型已配置或答案一定正确"
+    )
 
 
 class FileUploadResult(BaseModel):
@@ -56,7 +58,10 @@ class FileUploadResult(BaseModel):
     status: Literal["created", "updated", "unchanged", "failed"]
     version_no: int | None = None
     error: str | None = None
-    searchable: bool = False
+    searchable: bool = Field(
+        default=False,
+        description="本次成功导入后是否有文本块；失败为 false，旧文档状态请查询文档列表",
+    )
 
 
 class BatchUploadResponse(BaseModel):
@@ -144,6 +149,7 @@ def get_documents(
             version_no=record.version_no,
             sha256=record.sha256,
             imported_at=record.imported_at,
+            searchable=record.searchable,
         )
         for record in list_document_records(database_path, kb_id)
     ]
@@ -319,6 +325,7 @@ def upload_documents(
                     relative_path=relative_path,
                     status=result.status,
                     version_no=result.version_no,
+                    searchable=result.searchable,
                 )
             )
 

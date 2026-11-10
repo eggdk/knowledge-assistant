@@ -69,9 +69,9 @@ def load_cases(path: Path) -> list[EvalCase]:
     return cases
 
 
-def evaluate_dataset(dataset: Path) -> list[EvalResult]:
+def evaluate_dataset(dataset: Path, *, cases_path: Path | None = None) -> list[EvalResult]:
     """Import a fresh copy so old local data cannot affect the score."""
-    cases = load_cases(dataset / "cases.json")
+    cases = load_cases(cases_path if cases_path is not None else dataset / "cases.json")
     with TemporaryDirectory(prefix="knowledge-eval-") as temporary:
         database = Path(temporary) / "evaluation.sqlite3"
         kb_id = create_knowledge_base(database, "Isolated retrieval evaluation")
@@ -135,9 +135,12 @@ def summarize(results: list[EvalResult]) -> dict[str, int]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate local keyword retrieval")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument(
+        "--cases", type=Path, help="Use separate diagnostic questions without changing the fixed benchmark"
+    )
     args = parser.parse_args(argv)
     try:
-        results = evaluate_dataset(args.dataset)
+        results = evaluate_dataset(args.dataset, cases_path=args.cases)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     counts = summarize(results)

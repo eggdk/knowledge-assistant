@@ -39,8 +39,11 @@ Use `Ctrl+C` to stop the server.
 The `/docs` page now lets you create a knowledge base and upload MD/TXT files
 without a separate frontend. See [Backend lesson 03](docs/learning/03-web-upload-api.md)
 for a guided walkthrough and the [A/B API handoff](docs/api/knowledge-base-v1.md)
-for exact requests and responses. The `searchable: false` field in the current
-upload response is stale and should not be used as a UI indication of indexing.
+for exact requests and responses. Upload and document-list responses now report
+`searchable` from current-version chunks. This indicates retrieval readiness,
+not model availability or guaranteed answer quality. Read the
+[November 10 backend update](docs/learning/11-search-status-and-retrieval-diagnostics.md)
+for the exact meaning and a reproducible broad-question retrieval failure.
 
 ## Local MD/TXT import
 

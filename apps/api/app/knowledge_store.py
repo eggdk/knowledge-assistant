@@ -1,8 +1,4 @@
-"""Small SQLite store shared by CLI imports and later HTTP uploads.
-
-This stage stores parsed text and versions, but deliberately does not create a
-search index or answer questions yet.
-"""
+"""SQLite documents, original copies, versions and retrievable text chunks."""
 
 import hashlib
 import sqlite3
@@ -69,6 +65,7 @@ class ImportResult:
     relative_path: str
     status: str
     version_no: int
+    searchable: bool
 
 
 @dataclass(frozen=True)
@@ -78,6 +75,7 @@ class DocumentRecord:
     version_no: int
     sha256: str
     imported_at: str
+    searchable: bool
 
 
 @dataclass(frozen=True)
@@ -239,7 +237,7 @@ def import_document(
                          AND original_bytes IS NULL""",
                     (data, existing[0], existing[1]),
                 )
-            return ImportResult(relative_path, "unchanged", existing[1])
+            return ImportResult(relative_path, "unchanged", existing[1], bool(chunks))
 
         if existing is None:
             document_id = "doc_" + uuid4().hex
@@ -276,7 +274,7 @@ def import_document(
                 (version_no, document_id),
             )
 
-    return ImportResult(relative_path, status, version_no)
+    return ImportResult(relative_path, status, version_no, bool(chunks))
 
 
 def list_documents(database_path: Path, kb_id: str) -> list[tuple[str, int]]:
@@ -292,14 +290,20 @@ def list_document_records(database_path: Path, kb_id: str) -> list[DocumentRecor
     with _connect(database_path) as connection:
         rows = connection.execute(
             """SELECT d.id, d.source_path, d.active_version_no,
-                      v.sha256, v.imported_at
+                      v.sha256, v.imported_at,
+                      EXISTS (
+                          SELECT 1 FROM document_chunks AS c
+                          WHERE c.document_id = d.id AND c.kb_id = d.kb_id
+                            AND c.version_no = d.active_version_no
+                            AND c.strategy_version = ?
+                      )
                FROM documents AS d
                JOIN document_versions AS v
                  ON v.document_id = d.id AND v.version_no = d.active_version_no
                WHERE d.kb_id = ? ORDER BY d.source_path""",
-            (kb_id,),
+            (CHUNK_STRATEGY_VERSION, kb_id),
         ).fetchall()
-    return [DocumentRecord(*row) for row in rows]
+    return [DocumentRecord(*row[:-1], searchable=bool(row[-1])) for row in rows]
 
 
 def list_active_chunks(database_path: Path, kb_id: str) -> list[StoredChunk]:

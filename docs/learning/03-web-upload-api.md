@@ -14,7 +14,7 @@ Set-Location apps/api
 打开 `http://127.0.0.1:8000/docs`：
 
 1. 找到 `POST /api/knowledge-bases`，点 `Try it out`，填 `{"name":"我的测试库"}`，执行后记下 `kb_...` 编号。
-2. 找到 `POST /api/knowledge-bases/{kb_id}/documents/import`，填编号，选择 `examples/sample_docs` 中的一份 MD/TXT 文件；`relative_paths` 不填也可以。执行后应看到 `created` 和 `searchable: false`。
+2. 找到 `POST /api/knowledge-bases/{kb_id}/documents/import`，填编号，选择 `examples/sample_docs` 中的一份 MD/TXT 文件；`relative_paths` 不填也可以。执行后应看到 `created` 和 `searchable: true`。
 3. 再上传同一份文件，应看到 `unchanged`；到 `GET /api/knowledge-bases/{kb_id}/documents` 查看列表。
 4. `Ctrl+C` 停止服务器。数据库默认保存在仓库的 `storage/knowledge.sqlite3`，不会提交到 Git。
 
@@ -26,7 +26,7 @@ Set-Location apps/api
 
 两个特别重要的边界：
 
-- `searchable: false` 不是报错，而是告诉页面：上传后还没有完整的网页问答能力。当前代码已保存文本块，也能在命令行和提问接口中检索候选原文；这些结果仍不等于已生成可核验的答案。
+- 自 2026-11-10 起，`searchable: true` 表示当前版本有文本块可以参与检索；它不代表某道题一定有答案，也不代表模型密钥已配置。失败上传不会覆盖旧有效版本，失败后的真实状态应重新查文档列表。详见[第 11 课](11-search-status-and-retrieval-diagnostics.md)。
 - 整批请求结构有问题（例如路径数量不匹配、路径含 `..`）时，后端会在写入前拒绝；单个文件内容有问题时，只让该文件失败，其他文件继续导入。
 
 后端暂时限制每次 20 份文件、每份 5 MiB，避免本地开发时误传大文件。等 Word/Excel/PDF 和后台任务阶段再重新评估限制。完整字段和给 B 岗的前端示例见 [`docs/api/knowledge-base-v1.md`](../api/knowledge-base-v1.md)。

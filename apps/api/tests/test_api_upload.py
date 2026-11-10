@@ -72,12 +72,13 @@ def test_create_list_upload_repeat_update_and_list_documents(client) -> None:
         "created", "created"
     ]
     assert first.json()["failed"] == 0
-    assert all(file["searchable"] is False for file in first.json()["files"])
+    assert all(file["searchable"] is True for file in first.json()["files"])
 
     repeated = http.post(url, files=files, data=paths)
     assert [file["status"] for file in repeated.json()["files"]] == [
         "unchanged", "unchanged"
     ]
+    assert all(file["searchable"] is True for file in repeated.json()["files"])
 
     changed = http.post(
         url,
@@ -86,13 +87,22 @@ def test_create_list_upload_repeat_update_and_list_documents(client) -> None:
     )
     assert changed.json()["files"][0]["status"] == "updated"
     assert changed.json()["files"][0]["version_no"] == 2
+    assert changed.json()["files"][0]["searchable"] is True
 
     listed = http.get(f"/api/knowledge-bases/{kb_id}/documents")
     assert listed.status_code == 200
     assert [(item["relative_path"], item["version_no"]) for item in listed.json()] == [
         ("faq.txt", 1), ("manual/intro.md", 2)
     ]
-    assert all(item["searchable"] is False for item in listed.json())
+    assert all(item["searchable"] is True for item in listed.json())
+
+    retrieved = http.post(
+        f"/api/knowledge-bases/{kb_id}/questions", json={"question": "新版本"}
+    )
+    assert retrieved.status_code == 200
+    matches = retrieved.json()["matches"]
+    assert matches
+    assert all(match["version_no"] == 2 for match in matches)
 
     with sqlite3.connect(database) as connection:
         copies = connection.execute(
@@ -118,6 +128,57 @@ def test_bad_file_is_reported_without_blocking_good_file(client) -> None:
         "failed", "created"
     ]
     assert "Cannot decode" in response.json()["files"][0]["error"]
+    assert [item["searchable"] for item in response.json()["files"]] == [False, True]
+
+
+def test_active_version_without_chunks_does_not_use_historical_chunks(client) -> None:
+    http, database = client
+    kb_id = create_base(http)
+    url = f"/api/knowledge-bases/{kb_id}/documents/import"
+    http.post(url, files={"files": ("guide.txt", "实验说明".encode(), "text/plain")})
+    updated = http.post(url, files={"files": ("guide.txt", "新版实验说明".encode(), "text/plain")})
+    assert updated.json()["files"][0]["version_no"] == 2
+    # Simulate a legacy active version that has not had its chunks backfilled.
+    with sqlite3.connect(database) as connection:
+        connection.execute("DELETE FROM document_chunks WHERE version_no = 2")
+    assert http.get(f"/api/knowledge-bases/{kb_id}/documents").json()[0]["searchable"] is False
+    assert http.post(
+        f"/api/knowledge-bases/{kb_id}/questions", json={"question": "实验"}
+    ).json()["matches"] == []
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM document_chunks").fetchone()[0] > 0
+
+
+def test_old_chunk_strategy_is_not_ready_until_unchanged_import_backfills(client) -> None:
+    http, database = client
+    kb_id = create_base(http)
+    url = f"/api/knowledge-bases/{kb_id}/documents/import"
+    file = {"files": ("guide.txt", "实验说明".encode(), "text/plain")}
+    http.post(url, files=file)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE document_chunks SET strategy_version = 'old-strategy', "
+            "chunk_id = 'old_' || chunk_id"
+        )
+    assert http.get(f"/api/knowledge-bases/{kb_id}/documents").json()[0]["searchable"] is False
+    repeated = http.post(url, files=file).json()["files"][0]
+    assert (repeated["status"], repeated["version_no"], repeated["searchable"]) == (
+        "unchanged", 1, True
+    )
+    assert http.get(f"/api/knowledge-bases/{kb_id}/documents").json()[0]["searchable"] is True
+
+
+@pytest.mark.parametrize("bad_data", [b"\xff", b" \n\t"])
+def test_failed_update_preserves_previous_searchable_version(client, bad_data) -> None:
+    http, _ = client
+    kb_id = create_base(http)
+    url = f"/api/knowledge-bases/{kb_id}/documents/import"
+    http.post(url, files={"files": ("guide.txt", "实验说明".encode(), "text/plain")})
+    failed = http.post(url, files={"files": ("guide.txt", bad_data, "text/plain")})
+    assert failed.json()["files"][0]["status"] == "failed"
+    assert failed.json()["files"][0]["searchable"] is False
+    record = http.get(f"/api/knowledge-bases/{kb_id}/documents").json()[0]
+    assert (record["version_no"], record["searchable"]) == (1, True)
 
 
 def test_wrong_path_count_or_unsafe_path_is_rejected_before_writing(client) -> None:
