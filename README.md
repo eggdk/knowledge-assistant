@@ -47,6 +47,12 @@ for the exact meaning and a reproducible broad-question retrieval failure.
 The [broad-question retrieval fix](docs/learning/12-broad-question-retrieval-fix.md)
 now recovers all three diagnostic passages in Top-5 while preserving the original
 development-set answer ranks; real-model answer quality still needs review.
+The [chunk-boundary update](docs/learning/13-complete-chunk-boundaries.md)
+uses `mdtxt-v2` to preserve nearby list/sentence starts and ordinary ASCII words.
+Existing databases need `python -m app.cli chunks rebuild --kb YOUR_KB_ID` from
+`apps/api` before the new strategy can retrieve their stored text. This rebuild
+preserves original files and document versions; restart an existing API process
+after updating its code.
 
 ## Local MD/TXT import
 

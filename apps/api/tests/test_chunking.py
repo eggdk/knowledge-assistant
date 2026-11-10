@@ -1,5 +1,8 @@
 """Chunk text without losing its connection to the original document."""
 
+from pathlib import Path
+import re
+
 import pytest
 
 from app.chunking import split_text_into_chunks
@@ -79,3 +82,57 @@ def test_no_nonwhitespace_character_is_lost_at_boundaries(length) -> None:
         next_chunk.start_offset <= previous.end_offset
         for previous, next_chunk in zip(chunks, chunks[1:])
     )
+
+
+def test_real_retry_evidence_retains_the_complete_list_item() -> None:
+    path = Path(__file__).resolve().parents[3] / "evals/agent_insight/docs/experiments.md"
+    content = path.read_text(encoding="utf-8")
+    chunks = split_text_into_chunks(content, ".md")
+    evidence = [chunk for chunk in chunks if "只重试失败评估" in chunk.text]
+    assert evidence
+    assert all("选择已有 Trace 的实验保留当前 Trace" in chunk.text for chunk in evidence)
+    assert not content[:chunks[0].start_offset].strip()
+    assert not content[chunks[-1].end_offset:].strip()
+    assert all(
+        not content[previous.end_offset:current.start_offset].strip()
+        for previous, current in zip(chunks, chunks[1:])
+        if current.start_offset > previous.end_offset
+    )
+    for chunk in chunks:
+        assert content[chunk.start_offset:chunk.end_offset] == chunk.text
+        assert chunk.start_line == content[:chunk.start_offset].count("\n") + 1
+        assert chunk.end_line == content[:chunk.end_offset - 1].count("\n") + 1
+        assert len(chunk.text) <= 600
+        for position in (chunk.start_offset, chunk.end_offset):
+            assert not (
+                0 < position < len(content)
+                and re.fullmatch(r"[A-Za-z0-9_]{2}", content[position - 1:position + 1])
+            )
+
+
+def test_hard_limit_does_not_split_a_normal_ascii_word() -> None:
+    content = "甲" * 265 + " Trace " + "乙" * 400
+    chunks = split_text_into_chunks(
+        content, ".txt", max_chars=270, min_chars=150, overlap_chars=40
+    )
+    assert any("Trace" in chunk.text for chunk in chunks)
+    assert all(len(chunk.text) <= 270 for chunk in chunks)
+    assert all(
+        not re.fullmatch(r"[A-Za-z0-9_]{2}", content[p - 1:p + 1])
+        for chunk in chunks for p in (chunk.start_offset, chunk.end_offset)
+        if 0 < p < len(content)
+    )
+
+
+def test_overlong_single_identifier_remains_bounded_and_covered() -> None:
+    content = "A" * 1600
+    chunks = split_text_into_chunks(content, ".txt")
+    assert all(0 < len(chunk.text) <= 600 for chunk in chunks)
+    assert chunks[0].start_offset == 0
+    assert chunks[-1].end_offset == len(content)
+    assert all(a.start_offset < b.start_offset <= a.end_offset for a, b in zip(chunks, chunks[1:]))
+
+
+def test_zero_overlap_does_not_add_context_from_previous_chunk() -> None:
+    chunks = split_text_into_chunks("甲" * 1000, ".txt", overlap_chars=0)
+    assert chunks[0].end_offset == chunks[1].start_offset

@@ -13,6 +13,8 @@ from app.knowledge_store import (
     list_knowledge_bases,
 )
 from app.text_parser import DocumentParseError
+from app import knowledge_store
+from app.chunking import CHUNK_STRATEGY_VERSION
 
 
 def test_create_base_then_import_update_and_skip_same_bytes(tmp_path) -> None:
@@ -155,6 +157,70 @@ def test_bad_update_does_not_replace_active_version(tmp_path) -> None:
         import_document(database, kb_id, "same.md", b"\xff", retain_original=False)
 
     assert list_documents(database, kb_id) == [("same.md", 1)]
+
+
+def test_rebuild_migrates_chunks_without_changing_documents_or_history(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "migration.sqlite3"
+    kb_id = create_knowledge_base(database, "A")
+    monkeypatch.setattr(knowledge_store, "CHUNK_STRATEGY_VERSION", "mdtxt-v1")
+    import_document(database, kb_id, "guide.md", b"# Old\nOld body", retain_original=True)
+    import_document(database, kb_id, "guide.md", b"# New\nCurrent body", retain_original=True)
+    with sqlite3.connect(database) as connection:
+        versions = connection.execute("SELECT * FROM document_versions ORDER BY version_no").fetchall()
+        old_chunks = connection.execute("SELECT * FROM document_chunks ORDER BY chunk_id").fetchall()
+    monkeypatch.setattr(knowledge_store, "CHUNK_STRATEGY_VERSION", CHUNK_STRATEGY_VERSION)
+    assert list_active_chunks(database, kb_id) == []
+    first = knowledge_store.rebuild_chunks(database, kb_id)
+    first_ids = [chunk.chunk_id for chunk in list_active_chunks(database, kb_id)]
+    second = knowledge_store.rebuild_chunks(database, kb_id)
+    assert (first.documents, first.chunks) == (1, 1)
+    assert first == second
+    assert first_ids == [chunk.chunk_id for chunk in list_active_chunks(database, kb_id)]
+    assert [chunk.version_no for chunk in list_active_chunks(database, kb_id)] == [2]
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT * FROM document_versions ORDER BY version_no").fetchall() == versions
+        assert connection.execute(
+            "SELECT * FROM document_chunks WHERE strategy_version = 'mdtxt-v1' ORDER BY chunk_id"
+        ).fetchall() == old_chunks
+
+
+def test_rebuild_rolls_back_all_documents_if_one_chunk_write_fails(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "rollback.sqlite3"
+    kb_id = create_knowledge_base(database, "A")
+    for name in ("a.txt", "b.txt"):
+        import_document(database, kb_id, name, b"Stored source", retain_original=True)
+    with sqlite3.connect(database) as connection:
+        before = connection.execute("SELECT * FROM document_chunks ORDER BY chunk_id").fetchall()
+    original_insert = knowledge_store._insert_chunks
+    writes = 0
+
+    def fail_second(*args):
+        nonlocal writes
+        writes += 1
+        if writes == 2:
+            raise RuntimeError("simulated migration failure")
+        return original_insert(*args)
+
+    monkeypatch.setattr(knowledge_store, "_insert_chunks", fail_second)
+    with pytest.raises(RuntimeError, match="simulated migration failure"):
+        knowledge_store.rebuild_chunks(database, kb_id)
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT * FROM document_chunks ORDER BY chunk_id").fetchall() == before
+
+
+def test_rebuild_does_not_touch_other_knowledge_bases_or_accept_unknown_one(tmp_path, monkeypatch) -> None:
+    database = tmp_path / "isolation.sqlite3"
+    first = create_knowledge_base(database, "A")
+    second = create_knowledge_base(database, "B")
+    monkeypatch.setattr(knowledge_store, "CHUNK_STRATEGY_VERSION", "mdtxt-v1")
+    for kb_id in (first, second):
+        import_document(database, kb_id, "guide.txt", b"Stored source", retain_original=True)
+    monkeypatch.setattr(knowledge_store, "CHUNK_STRATEGY_VERSION", CHUNK_STRATEGY_VERSION)
+    knowledge_store.rebuild_chunks(database, first)
+    assert list_active_chunks(database, first)
+    assert list_active_chunks(database, second) == []
+    with pytest.raises(ValueError, match="Unknown knowledge base"):
+        knowledge_store.rebuild_chunks(database, "missing")
 
 
 @pytest.mark.parametrize(

@@ -8,13 +8,25 @@ from bisect import bisect_left
 from dataclasses import dataclass
 
 
-CHUNK_STRATEGY_VERSION = "mdtxt-v1"
+CHUNK_STRATEGY_VERSION = "mdtxt-v2"
 DEFAULT_MAX_CHARS = 600
 DEFAULT_MIN_CHARS = 250
 DEFAULT_OVERLAP_CHARS = 80
 
 _HEADING = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.+?)[ \t]*$")
 _FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+_SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s)")
+
+
+def _inside_ascii_word(content: str, position: int) -> bool:
+    def word_character(character: str) -> bool:
+        return character.isascii() and (character.isalnum() or character == "_")
+
+    return (
+        0 < position < len(content)
+        and word_character(content[position - 1])
+        and word_character(content[position])
+    )
 
 
 @dataclass(frozen=True)
@@ -68,11 +80,46 @@ def _sections(content: str, suffix: str) -> list[tuple[int, int, str]]:
 
 def _choose_end(content: str, start: int, ceiling: int, minimum: int) -> int:
     """Prefer a paragraph, then sentence, then line boundary before hard cut."""
-    for pattern in (r"\n[ \t]*\n", r"[。！？.!?]", r"\n"):
+    for pattern in (r"\n[ \t]*\n", _SENTENCE_END, r"\n"):
         matches = list(re.finditer(pattern, content[minimum:ceiling]))
         if matches:
             return minimum + matches[-1].end()
+    # A hard limit may fall inside Trace, ENOSPC or another identifier.
+    # Prefer the start of that word; an over-limit word itself must still split.
+    boundary = ceiling
+    while boundary > start and _inside_ascii_word(content, boundary):
+        boundary -= 1
+    if boundary > start:
+        return boundary
     return ceiling
+
+
+def _choose_overlap_start(content: str, start: int, end: int, overlap: int) -> int:
+    """Align overlap to a nearby sentence/list line without leaving source gaps."""
+    if overlap == 0:
+        return end
+    target = max(start + 1, end - overlap)
+    # A short backward search preserves list items while limiting extra overlap.
+    line_lower = max(start + 1, target - overlap // 2)
+    line_start = content.rfind("\n", line_lower, target) + 1
+    if line_start > start:
+        return line_start
+    sentence_lower = max(start + 1, target - overlap // 4)
+    sentences = list(_SENTENCE_END.finditer(content, sentence_lower, target))
+    if sentences:
+        return sentences[-1].end()
+
+    lower = max(start + 1, target - overlap)
+    boundary = target
+    while boundary > lower and _inside_ascii_word(content, boundary):
+        boundary -= 1
+    if not _inside_ascii_word(content, boundary):
+        return boundary
+    # No nearby natural boundary: skip to the complete word's end if possible.
+    boundary = target
+    while boundary < end and _inside_ascii_word(content, boundary):
+        boundary += 1
+    return boundary if not _inside_ascii_word(content, boundary) else target
 
 
 def split_text_into_chunks(
@@ -126,6 +173,6 @@ def split_text_into_chunks(
             )
             if ceiling == section_end:
                 break
-            cursor = max(cursor + 1, end - overlap_chars)
+            cursor = _choose_overlap_start(content, cursor, end, overlap_chars)
 
     return chunks

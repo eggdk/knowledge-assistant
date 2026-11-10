@@ -79,6 +79,12 @@ class DocumentRecord:
 
 
 @dataclass(frozen=True)
+class RebuildResult:
+    documents: int
+    chunks: int
+
+
+@dataclass(frozen=True)
 class StoredChunk:
     chunk_id: str
     kb_id: str
@@ -284,6 +290,38 @@ def list_documents(database_path: Path, kb_id: str) -> list[tuple[str, int]]:
                WHERE kb_id = ? ORDER BY source_path""",
             (kb_id,),
         ).fetchall()
+
+
+def rebuild_chunks(database_path: Path, kb_id: str) -> RebuildResult:
+    """Rebuild current chunks atomically from saved text, preserving source history.
+
+    Old strategies remain available for historical references. Only this
+    strategy's chunks for active document versions are replaced.
+    """
+    with _connect(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if connection.execute(
+            "SELECT 1 FROM knowledge_bases WHERE id = ?", (kb_id,)
+        ).fetchone() is None:
+            raise ValueError(f"Unknown knowledge base: {kb_id}")
+        rows = connection.execute(
+            """SELECT d.id, d.source_path, d.active_version_no, v.content
+               FROM documents AS d JOIN document_versions AS v
+                 ON v.document_id = d.id AND v.version_no = d.active_version_no
+               WHERE d.kb_id = ? ORDER BY d.source_path""",
+            (kb_id,),
+        ).fetchall()
+        chunk_count = 0
+        for document_id, source_path, version_no, content in rows:
+            chunks = split_text_into_chunks(content, Path(source_path).suffix)
+            connection.execute(
+                """DELETE FROM document_chunks
+                   WHERE document_id = ? AND version_no = ? AND strategy_version = ?""",
+                (document_id, version_no, CHUNK_STRATEGY_VERSION),
+            )
+            _insert_chunks(connection, kb_id, document_id, version_no, chunks)
+            chunk_count += len(chunks)
+    return RebuildResult(len(rows), chunk_count)
 
 
 def list_document_records(database_path: Path, kb_id: str) -> list[DocumentRecord]:

@@ -10,6 +10,7 @@ from app.knowledge_store import (
     list_active_chunks,
     list_documents,
     list_knowledge_bases,
+    rebuild_chunks,
 )
 from app.retrieval import search_knowledge_base
 
@@ -44,6 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
     chunk_commands = chunks.add_subparsers(dest="chunks_command", required=True)
     chunk_listing = chunk_commands.add_parser("list")
     chunk_listing.add_argument("--kb", required=True)
+    chunk_rebuild = chunk_commands.add_parser("rebuild", help="Rebuild chunks from stored current text")
+    chunk_rebuild.add_argument("--kb", required=True)
 
     search = commands.add_parser("search", help="Try keyword retrieval locally")
     search.add_argument("--kb", required=True)
@@ -91,6 +94,9 @@ def main(argv: list[str] | None = None) -> int:
                     f"\tchunk {chunk.chunk_no}\tL{chunk.start_line}-L{chunk.end_line}"
                     f"\t{len(chunk.content)} chars\t{chunk.heading}"
                 )
+        elif args.command == "chunks" and args.chunks_command == "rebuild":
+            result = rebuild_chunks(args.db, args.kb)
+            print(f"Rebuilt {result.chunks} chunks for {result.documents} documents; document versions unchanged.")
         elif args.command == "search":
             hits = search_knowledge_base(
                 args.db, args.kb, args.query, limit=args.limit
