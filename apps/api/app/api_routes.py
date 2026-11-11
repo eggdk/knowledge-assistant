@@ -1,11 +1,12 @@
 """HTTP contract for the teammate's first knowledge-base management page."""
 
 import logging
+import re
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.answer_generation import (
     MODEL_NAME,
@@ -70,8 +71,16 @@ class BatchUploadResponse(BaseModel):
     failed: int
 
 
-class AskQuestionRequest(BaseModel):
+HistoryQuestion = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
+_FOLLOW_UP = re.compile(r"刚才|前面提到|上面提到|上述|它|这个|那个|这种|那种|这两种|前者|后者|^那[，、 ]")
+
+
+class QuestionWithHistory(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
+    history: list[HistoryQuestion] = Field(default_factory=list, max_length=3)
+
+
+class AskQuestionRequest(QuestionWithHistory):
     limit: int = Field(default=5, ge=1, le=20)
 
 
@@ -93,8 +102,7 @@ class AskQuestionResponse(BaseModel):
     matches: list[SourceMatchView]
 
 
-class GenerateAnswerRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=1000)
+class GenerateAnswerRequest(QuestionWithHistory):
     limit: int = Field(default=5, ge=1, le=8)
 
 
@@ -113,6 +121,18 @@ class GenerateAnswerResponse(BaseModel):
 def _require_knowledge_base(database_path: Path, kb_id: str) -> None:
     if not knowledge_base_exists(database_path, kb_id):
         raise HTTPException(status_code=404, detail="Knowledge base not found")
+
+
+def _resolve_follow_up(question: str, history: list[str]) -> tuple[str, list[str]]:
+    if not history or not _FOLLOW_UP.search(question):
+        return question, []
+    # A recent independent question begins a new topic.
+    start = next(
+        (i for i in range(len(history) - 1, -1, -1) if not _FOLLOW_UP.search(history[i])),
+        0,
+    )
+    context = history[start:]
+    return "\n".join([*context, question]), context
 
 
 @router.post("", response_model=KnowledgeBaseView, status_code=201)
@@ -181,7 +201,8 @@ def ask_question(
     if not question:
         raise HTTPException(status_code=422, detail="Question must not be blank")
 
-    hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
+    query, _ = _resolve_follow_up(question, request.history)
+    hits = search_knowledge_base(database_path, kb_id, query, limit=request.limit)
     logger.info("retrieval kb=%s matches=%d", kb_id, len(hits))
     return AskQuestionResponse(
         question=question,
@@ -208,15 +229,16 @@ def answer_question(
     request: GenerateAnswerRequest,
     database_path: Annotated[Path, Depends(get_database_path)],
 ) -> GenerateAnswerResponse:
-    """Retrieve current evidence, then ask the configured model for one answer."""
+    """Retrieve current evidence, using recent questions to resolve follow-ups."""
     _require_knowledge_base(database_path, kb_id)
     question = request.question.strip()
     if not question:
         raise HTTPException(status_code=422, detail="Question must not be blank")
 
-    hits = search_knowledge_base(database_path, kb_id, question, limit=request.limit)
+    query, context = _resolve_follow_up(question, request.history)
+    hits = search_knowledge_base(database_path, kb_id, query, limit=request.limit)
     try:
-        result = generate_answer(question, hits)
+        result = generate_answer(question, hits, history=context)
     except ModelNotConfigured as exc:
         logger.warning("answer kb=%s matches=%d model_key=missing", kb_id, len(hits))
         raise HTTPException(status_code=503, detail="Model API key is not configured") from exc

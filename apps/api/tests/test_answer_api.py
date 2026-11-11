@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -35,8 +36,9 @@ def _base_with_document(http: TestClient) -> str:
 def test_answer_returns_model_text_and_current_source(client, monkeypatch) -> None:
     kb_id = _base_with_document(client)
 
-    def fake_generation(question, hits):
+    def fake_generation(question, hits, *, history):
         assert question == "Trace 在哪里看？"
+        assert history == []
         assert len(hits) == 1
         return GeneratedAnswer("在 Trace 页面查看调用记录。", "generated", hits, ["S1"])
 
@@ -84,7 +86,7 @@ def test_broad_question_delivers_experiment_entry_to_model_without_rewriting_que
     )
     assert upload.json()["failed"] == 0
 
-    def fake_generation(question, hits):
+    def fake_generation(question, hits, *, history):
         assert question == "Agent Insight 如何管理实验？"
         label, hit = next(
             (f"S{index}", hit) for index, hit in enumerate(hits, start=1)
@@ -100,6 +102,70 @@ def test_broad_question_delivers_experiment_entry_to_model_without_rewriting_que
     )
     assert response.status_code == 200
     assert response.json()["citations"][0]["start_line"] == 10
+    follow_up = client.post(
+        f"/api/knowledge-bases/{kb_id}/questions",
+        json={
+            "question": "刚才那个实验失败后怎么重试？",
+            "history": ["Agent Insight 如何管理实验？"],
+        },
+    )
+    assert follow_up.status_code == 200
+    assert any(
+        "选择已有 Trace 的实验保留当前 Trace，只重试失败评估" in hit["content"]
+        for hit in follow_up.json()["matches"]
+    )
+
+
+def test_follow_up_uses_recent_topic_for_retrieval_and_model_context(client, monkeypatch) -> None:
+    kb_id = _base_with_document(client)
+    base = f"/api/knowledge-bases/{kb_id}"
+    question = "它在哪里？"
+    history = ["星图是什么？", "Trace 是什么？", "刚才那个有什么用？"]
+    assert client.post(f"{base}/questions", json={"question": question}).json()["matches"] == []
+    request = {"question": question, "history": history}
+    found = client.post(f"{base}/questions", json=request).json()
+    assert found["question"] == question
+    assert found["matches"][0]["relative_path"] == "guide.md"
+
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-key")
+    calls = []
+
+    def fake_post(url, *, headers, json, timeout):
+        calls.append(url)
+        messages = json["messages"]
+        assert "须依据本次资料片段" in messages[0]["content"]
+        assert '"Trace 是什么？", "刚才那个有什么用？"' in messages[1]["content"]
+        assert "星图" not in messages[1]["content"]
+        assert f"问题：{question}" in messages[1]["content"]
+        assert "[S1] guide.md" in messages[1]["content"]
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={"choices": [{
+                "finish_reason": "stop",
+                "message": {"content": '{"status":"generated","answer":"在 Trace 页面查看。","citation_ids":["S1"]}'},
+            }]},
+        )
+
+    monkeypatch.setattr("app.answer_generation.httpx.post", fake_post)
+    response = client.post(f"{base}/answers", json=request)
+    assert response.status_code == 200
+    assert response.json()["citations"][0]["chunk_id"] == found["matches"][0]["chunk_id"]
+    unrelated = {"question": "月光电梯", "history": history}
+    assert client.post(f"{base}/questions", json=unrelated).json()["matches"] == []
+    assert client.post(f"{base}/answers", json=unrelated).json()["answer_status"] == "insufficient_evidence"
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("endpoint", ["questions", "answers"])
+@pytest.mark.parametrize("history", [["Trace"] * 4, ["  "], ["a" * 1001]])
+def test_history_rejects_oversized_or_blank_questions(client, endpoint, history) -> None:
+    kb_id = _base_with_document(client)
+    response = client.post(
+        f"/api/knowledge-bases/{kb_id}/{endpoint}",
+        json={"question": "它在哪里？", "history": history},
+    )
+    assert response.status_code == 422
 
 
 def test_missing_key_and_invalid_requests(client, monkeypatch) -> None:
