@@ -10,6 +10,17 @@ Base URL when running locally: `http://127.0.0.1:8000`. Interactive API page: `/
 | List knowledge bases | `GET /api/knowledge-bases` | None | Array of `{id,name}` |
 | List imported documents | `GET /api/knowledge-bases/{kb_id}/documents` | None | Array of `{id,relative_path,version_no,sha256,imported_at,searchable}` |
 | Upload selected files | `POST /api/knowledge-bases/{kb_id}/documents/import` | `multipart/form-data` | `{files:[...],failed:N}` |
+| Remove a document | `DELETE /api/knowledge-bases/{kb_id}/documents/{document_id}` | None | `204` with an empty body, or `404` |
+
+## 删除与恢复
+
+删除请求使用文档列表里的 `id` 作为 `document_id`。收到 `204` 后刷新列表，成功响应没有 JSON。重复删除同一份文档仍返回 `204`。知识库不存在、文档不存在或文档属于其他知识库时返回 `404`。
+
+删除成功后，文档从列表、重建范围和后续问答检索中移除。SQLite 单独记录删除状态，保留原件、版本和文本块。已有数据库会在连接时创建所需的表和视图。
+
+在同一知识库重新上传相同的相对路径，可恢复同一个文档 ID。文件字节与删除前的最新版本一致时返回 `unchanged` 并沿用版本号，有变化时返回 `updated` 并增加版本号。成功后刷新列表即可看到恢复的文档。上传失败时文档保持删除状态。
+
+## 上传
 
 For upload, append every selected file under the repeated form field `files`. Optionally append one `relative_paths` field per file, in the **same order**, to retain a browser-selected folder's structure. For ordinary multi-file selection, omit `relative_paths`; each file's name becomes its path. A relative path must be safe and end with the file's exact name, for example `manual/intro.md` for `intro.md`. Paths in one request must be unique.
 
@@ -48,6 +59,6 @@ Since the `mdtxt-v2` update, existing databases can use `python -m app.cli chunk
 
 Failed uploads return `searchable: false` for that **attempt**, and do not replace a previously valid active version. Refresh the document list to see the existing document's real state; do not mark it unavailable simply because an update failed. Empty/whitespace-only files are rejected. A partial batch still uses HTTP 200; check `failed` and every file's `status`. Unknown knowledge base returns 404; malformed batch/path returns 422 **before any file is written**.
 
-Current limits: only UTF-8 MD/TXT (BOM accepted); at most 20 files per request and 5 MiB per file. Exact originals are saved in local SQLite by default. Upload is synchronous, so there is no `job_id`, progress polling, persistent search index, delete endpoint, authentication, or production-scale storage yet. Run the backend on loopback or another trusted development network only; do not expose this unauthenticated API to the public Internet.
+Current limits: only UTF-8 MD/TXT (BOM accepted); at most 20 files per request and 5 MiB per file. Exact originals are saved in local SQLite by default. Upload is synchronous, so there is no `job_id`, progress polling, persistent search index, authentication, or production-scale storage yet. Run the backend on loopback or another trusted development network only; do not expose this unauthenticated API to the public Internet.
 
-B-side first management page can implement: select/create knowledge base, choose one or several files (optionally a folder), submit, show per-file result, refresh the document list. Directory tree, document detail, deletion and index progress remain separate increments. The existing widget already calls the answer API. See the [backend update and diagnosis](../learning/11-search-status-and-retrieval-diagnostics.md) for examples.
+B-side first management page can implement: select/create knowledge base, choose one or several files (optionally a folder), submit, show per-file result, refresh the document list. The delete button can use the endpoint above. Directory tree, document detail and index progress remain separate increments. The existing widget already calls the answer API. See the [backend update and diagnosis](../learning/11-search-status-and-retrieval-diagnostics.md) for examples.

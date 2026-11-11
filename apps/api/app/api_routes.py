@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from app.answer_generation import (
@@ -16,6 +16,7 @@ from app.answer_generation import (
 from app.config import get_database_path
 from app.knowledge_store import (
     create_knowledge_base,
+    delete_document,
     import_document,
     knowledge_base_exists,
     list_document_records,
@@ -153,6 +154,19 @@ def get_documents(
         )
         for record in list_document_records(database_path, kb_id)
     ]
+
+
+@router.delete("/{kb_id}/documents/{document_id}", status_code=204, response_class=Response)
+def remove_document(
+    kb_id: str,
+    document_id: str,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> Response:
+    """Remove a document from the list and retrieval, preserving its history."""
+    _require_knowledge_base(database_path, kb_id)
+    if not delete_document(database_path, kb_id, document_id):
+        raise HTTPException(status_code=404, detail="Document not found in this knowledge base")
+    return Response(status_code=204)
 
 
 @router.post("/{kb_id}/questions", response_model=AskQuestionResponse)

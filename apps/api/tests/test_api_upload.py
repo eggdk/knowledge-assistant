@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api_routes import MAX_UPLOAD_BYTES
 from app.config import get_database_path
+from app.knowledge_store import list_documents, rebuild_chunks
 from app.main import app
 
 
@@ -179,6 +180,87 @@ def test_failed_update_preserves_previous_searchable_version(client, bad_data) -
     assert failed.json()["files"][0]["searchable"] is False
     record = http.get(f"/api/knowledge-bases/{kb_id}/documents").json()[0]
     assert (record["version_no"], record["searchable"]) == (1, True)
+
+
+def test_delete_hides_document_from_listing_retrieval_and_rebuild(client) -> None:
+    http, database = client
+    kb_id = create_base(http)
+    other_kb = create_base(http)
+    base = f"/api/knowledge-bases/{kb_id}"
+    upload = http.post(
+        f"{base}/documents/import",
+        files=[
+            ("files", ("guide.txt", b"cedaronly", "text/plain")),
+            ("files", ("keep.txt", b"amberonly", "text/plain")),
+        ],
+    )
+    assert upload.json()["failed"] == 0
+    document_id = http.get(f"{base}/documents").json()[0]["id"]
+    question = {"question": "cedaronly"}
+    assert http.post(f"{base}/questions", json=question).json()["matches"]
+
+    assert http.delete(f"/api/knowledge-bases/{other_kb}/documents/{document_id}").status_code == 404
+    assert http.delete(f"/api/knowledge-bases/missing/documents/{document_id}").status_code == 404
+    assert http.delete(f"{base}/documents/missing").status_code == 404
+    assert http.post(f"{base}/questions", json=question).json()["matches"]
+
+    for _ in range(2):
+        response = http.delete(f"{base}/documents/{document_id}")
+        assert response.status_code == 204 and response.content == b""
+    assert [item["relative_path"] for item in http.get(f"{base}/documents").json()] == ["keep.txt"]
+    assert list_documents(database, kb_id) == [("keep.txt", 1)]
+    assert rebuild_chunks(database, kb_id).documents == 1
+    assert http.post(f"{base}/questions", json=question).json()["matches"] == []
+    answer = http.post(f"{base}/answers", json=question).json()
+    assert answer["answer_status"] == "insufficient_evidence" and answer["citations"] == []
+    assert http.post(f"{base}/questions", json={"question": "amberonly"}).json()["matches"]
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT original_bytes FROM document_versions WHERE document_id = ?", (document_id,)
+        ).fetchall() == [(b"cedaronly",)]
+        assert connection.execute(
+            "SELECT COUNT(*) FROM document_chunks WHERE document_id = ?", (document_id,)
+        ).fetchone()[0] == 1
+
+
+def test_reupload_restores_deleted_document_and_preserves_version_rules(client) -> None:
+    http, database = client
+    kb_id = create_base(http)
+    base = f"/api/knowledge-bases/{kb_id}"
+
+    def upload(data: bytes):
+        result = http.post(
+            f"{base}/documents/import",
+            files={"files": ("guide.txt", data, "text/plain")},
+            data={"relative_paths": "manual/guide.txt"},
+        )
+        assert result.status_code == 200
+        return result.json()["files"][0]
+
+    assert upload(b"firstversion")["version_no"] == 1
+    assert upload(b"secondversion")["version_no"] == 2
+    original = http.get(f"{base}/documents").json()[0]
+    url = f"{base}/documents/{original['id']}"
+    assert http.delete(url).status_code == 204
+    assert upload(b"\xff")["status"] == "failed"
+    assert http.get(f"{base}/documents").json() == []
+
+    same = upload(b"secondversion")
+    assert (same["status"], same["version_no"], same["searchable"]) == ("unchanged", 2, True)
+    assert http.get(f"{base}/documents").json() == [original]
+    assert http.post(f"{base}/questions", json={"question": "secondversion"}).json()["matches"]
+
+    assert http.delete(url).status_code == 204
+    changed = upload(b"thirdversion")
+    assert (changed["status"], changed["version_no"], changed["searchable"]) == ("updated", 3, True)
+    listed = http.get(f"{base}/documents").json()[0]
+    assert (listed["id"], listed["version_no"]) == (original["id"], 3)
+    assert http.post(f"{base}/questions", json={"question": "secondversion"}).json()["matches"] == []
+    assert http.post(f"{base}/questions", json={"question": "thirdversion"}).json()["matches"]
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT version_no, original_bytes FROM document_versions ORDER BY version_no"
+        ).fetchall() == [(1, b"firstversion"), (2, b"secondversion"), (3, b"thirdversion")]
 
 
 def test_wrong_path_count_or_unsafe_path_is_rejected_before_writing(client) -> None:

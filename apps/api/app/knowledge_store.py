@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS documents (
     created_at TEXT NOT NULL,
     UNIQUE(kb_id, source_path)
 );
+CREATE TABLE IF NOT EXISTS document_deletions (
+    document_id TEXT PRIMARY KEY REFERENCES documents(id),
+    deleted_at TEXT NOT NULL
+);
+CREATE VIEW IF NOT EXISTS active_documents AS
+    SELECT d.* FROM documents AS d
+    WHERE NOT EXISTS (
+        SELECT 1 FROM document_deletions AS x WHERE x.document_id = d.id
+    );
 CREATE TABLE IF NOT EXISTS document_versions (
     document_id TEXT NOT NULL REFERENCES documents(id),
     version_no INTEGER NOT NULL,
@@ -243,6 +252,9 @@ def import_document(
                          AND original_bytes IS NULL""",
                     (data, existing[0], existing[1]),
                 )
+            connection.execute(
+                "DELETE FROM document_deletions WHERE document_id = ?", (existing[0],)
+            )
             return ImportResult(relative_path, "unchanged", existing[1], bool(chunks))
 
         if existing is None:
@@ -279,14 +291,33 @@ def import_document(
                 "UPDATE documents SET active_version_no = ? WHERE id = ?",
                 (version_no, document_id),
             )
+            connection.execute(
+                "DELETE FROM document_deletions WHERE document_id = ?", (document_id,)
+            )
 
     return ImportResult(relative_path, status, version_no, bool(chunks))
+
+
+def delete_document(database_path: Path, kb_id: str, document_id: str) -> bool:
+    """Remove a document from active use while preserving its version history."""
+    with _connect(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        if connection.execute(
+            "SELECT 1 FROM documents WHERE kb_id = ? AND id = ?", (kb_id, document_id)
+        ).fetchone() is None:
+            return False
+        connection.execute(
+            """INSERT INTO document_deletions (document_id, deleted_at) VALUES (?, ?)
+               ON CONFLICT(document_id) DO NOTHING""",
+            (document_id, _now()),
+        )
+    return True
 
 
 def list_documents(database_path: Path, kb_id: str) -> list[tuple[str, int]]:
     with _connect(database_path) as connection:
         return connection.execute(
-            """SELECT source_path, active_version_no FROM documents
+            """SELECT source_path, active_version_no FROM active_documents
                WHERE kb_id = ? ORDER BY source_path""",
             (kb_id,),
         ).fetchall()
@@ -306,7 +337,7 @@ def rebuild_chunks(database_path: Path, kb_id: str) -> RebuildResult:
             raise ValueError(f"Unknown knowledge base: {kb_id}")
         rows = connection.execute(
             """SELECT d.id, d.source_path, d.active_version_no, v.content
-               FROM documents AS d JOIN document_versions AS v
+               FROM active_documents AS d JOIN document_versions AS v
                  ON v.document_id = d.id AND v.version_no = d.active_version_no
                WHERE d.kb_id = ? ORDER BY d.source_path""",
             (kb_id,),
@@ -335,7 +366,7 @@ def list_document_records(database_path: Path, kb_id: str) -> list[DocumentRecor
                             AND c.version_no = d.active_version_no
                             AND c.strategy_version = ?
                       )
-               FROM documents AS d
+               FROM active_documents AS d
                JOIN document_versions AS v
                  ON v.document_id = d.id AND v.version_no = d.active_version_no
                WHERE d.kb_id = ? ORDER BY d.source_path""",
@@ -353,7 +384,7 @@ def list_active_chunks(database_path: Path, kb_id: str) -> list[StoredChunk]:
                       c.heading, c.start_offset, c.end_offset,
                       c.start_line, c.end_line
                FROM document_chunks AS c
-               JOIN documents AS d ON d.id = c.document_id
+               JOIN active_documents AS d ON d.id = c.document_id
                WHERE d.kb_id = ? AND c.kb_id = d.kb_id
                  AND c.version_no = d.active_version_no
                  AND c.strategy_version = ?
