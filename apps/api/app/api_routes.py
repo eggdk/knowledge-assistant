@@ -1,18 +1,24 @@
 """HTTP contract for the teammate's first knowledge-base management page."""
 
+import json
 import logging
 import re
+from contextlib import aclosing
 from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from app.answer_generation import (
     MODEL_NAME,
+    GeneratedAnswer,
     ModelAnswerError,
     ModelNotConfigured,
     generate_answer,
+    require_model_key,
+    stream_answer,
 )
 from app.config import get_database_path
 from app.knowledge_store import (
@@ -254,15 +260,66 @@ def answer_question(
         len(result.citation_ids),
     )
 
+    return _answer_view(question, result, bool(hits))
+
+
+def _answer_view(question: str, result: GeneratedAnswer, has_matches: bool) -> GenerateAnswerResponse:
     return GenerateAnswerResponse(
         question=question,
         answer=result.answer,
         answer_status=result.status,
-        model=MODEL_NAME if hits else None,
+        model=MODEL_NAME if has_matches else None,
         citations=[
             CitationView(label=label, **_source_match(hit).model_dump())
             for label, hit in zip(result.citation_ids, result.cited_hits, strict=True)
         ],
+    )
+
+
+def _event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post(
+    "/{kb_id}/answers/stream",
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {"schema": {"type": "string"}}}}},
+)
+def stream_answer_question(
+    kb_id: str,
+    request: GenerateAnswerRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> StreamingResponse:
+    """Send draft text deltas and a final answer with verified citation IDs."""
+    _require_knowledge_base(database_path, kb_id)
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Question must not be blank")
+    query, context = _resolve_follow_up(question, request.history)
+    hits = search_knowledge_base(database_path, kb_id, query, limit=request.limit)
+    if hits:
+        try:
+            require_model_key()
+        except ModelNotConfigured as exc:
+            raise HTTPException(status_code=503, detail="Model API key is not configured") from exc
+
+    async def events():
+        try:
+            async with aclosing(stream_answer(question, hits, history=context)) as output:
+                async for part in output:
+                    if isinstance(part, str):
+                        yield _event("delta", {"text": part})
+                    else:
+                        view = _answer_view(question, part, bool(hits))
+                        logger.info("answer stream kb=%s status=%s citations=%d", kb_id, part.status, len(part.cited_hits))
+                        yield _event("final", view.model_dump())
+        except (ModelAnswerError, ModelNotConfigured):
+            logger.warning("answer stream kb=%s failed", kb_id)
+            yield _event("error", {"code": "model_error", "message": "生成中断或引用校验失败，请重试。"})
+
+    return StreamingResponse(
+        events(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

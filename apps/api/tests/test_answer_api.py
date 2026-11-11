@@ -1,5 +1,6 @@
 """The answer endpoint uses retrieved evidence without changing question v1."""
 
+import json
 from pathlib import Path
 
 import httpx
@@ -166,6 +167,88 @@ def test_history_rejects_oversized_or_blank_questions(client, endpoint, history)
         json={"question": "它在哪里？", "history": history},
     )
     assert response.status_code == 422
+
+
+def _read_events(response):
+    return [
+        (event.removeprefix("event: "), json.loads(data.removeprefix("data: ")))
+        for event, data in (block.splitlines() for block in response.text.strip().split("\n\n"))
+    ]
+
+
+@pytest.mark.parametrize("ending", ["valid", "invalid-citation", "truncated"])
+def test_stream_delivers_text_and_validates_final_citations(client, monkeypatch, ending) -> None:
+    kb_id = _base_with_document(client)
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "test-only-key")
+    citation = "S999" if ending == "invalid-citation" else "S1"
+    fragments = [
+        '{"status":"generated","answer":"在 Trace',
+        ' 页面查看。 [S1]',
+        f'","citation_ids":["{citation}"]}}',
+    ]
+    calls = []
+    closed = []
+
+    class ProviderStream(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            for fragment in fragments:
+                packet = {"choices": [{"delta": {"content": fragment}, "finish_reason": None}]}
+                yield f"data: {json.dumps(packet)}\r\n\r\n".encode()
+            if ending != "truncated":
+                yield b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\r\n\r\n'
+                yield b"data: [DONE]\r\n\r\n"
+
+        async def aclose(self):
+            closed.append(True)
+
+    def provider(request):
+        payload = json.loads(request.content)
+        calls.append(payload)
+        assert payload["stream"] is True
+        assert '先前用户问题（JSON）：["Trace 是什么？"]' in payload["messages"][1]["content"]
+        assert "[S1] guide.md" in payload["messages"][1]["content"]
+        return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=ProviderStream())
+
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        "app.answer_generation.httpx.AsyncClient",
+        lambda **kwargs: async_client(transport=httpx.MockTransport(provider), **kwargs),
+    )
+    response = client.post(
+        f"/api/knowledge-bases/{kb_id}/answers/stream",
+        json={"question": "它在哪里？", "history": ["Trace 是什么？"]},
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = _read_events(response)
+    assert events[:2] == [("delta", {"text": "在 Trace"}), ("delta", {"text": " 页面查看。 [S1]"})]
+    assert len(events) == 3
+    if ending == "valid":
+        event, answer = events[-1]
+        assert event == "final"
+        assert answer["answer"] == "在 Trace 页面查看。 [S1]"
+        assert answer["question"] == "它在哪里？"
+        assert answer["citations"][0]["relative_path"] == "guide.md"
+    else:
+        assert events[-1][0] == "error"
+        assert events[-1][1]["code"] == "model_error"
+    assert len(calls) == 1
+    assert closed
+
+
+def test_stream_returns_insufficient_evidence_and_missing_key_before_stream(client, monkeypatch) -> None:
+    kb_id = _base_with_document(client)
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    url = f"/api/knowledge-bases/{kb_id}/answers/stream"
+    no_match = client.post(url, json={"question": "月光电梯"})
+    assert no_match.status_code == 200
+    [(event, payload)] = _read_events(no_match)
+    assert event == "final"
+    assert payload["answer_status"] == "insufficient_evidence"
+    assert payload["citations"] == []
+    no_key = client.post(url, json={"question": "Trace"})
+    assert no_key.status_code == 503
+    assert no_key.headers["content-type"].startswith("application/json")
 
 
 def test_missing_key_and_invalid_requests(client, monkeypatch) -> None:

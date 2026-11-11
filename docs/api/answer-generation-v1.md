@@ -60,6 +60,18 @@
 
 历史随请求传入，服务端没有会话记录。每次生成仍发起一次模型调用。问答回退到 `/questions` 时，前端传相同的 `question` 和 `history`，让检索延续当前话题。
 
+## 流式输出
+
+`POST /api/knowledge-bases/{kb_id}/answers/stream` 使用与 `/answers` 相同的 JSON 请求，响应为 `text/event-stream`。前端用 `fetch` 发起 POST，按 SSE 空行边界读取事件。一次网络读取可能包含多个事件，也可能只有半个事件，需要保留未读完的内容。
+
+- `delta` 的数据为 `{"text":"新增的文字"}`。逐段追加到生成中的答案区域。
+- `final` 的数据与 `/answers` 的 JSON 响应一致。以完整答案替换生成中的文字，并显示该事件携带的引用。资料不足时也会收到 `final`，其状态为 `insufficient_evidence`。
+- `error` 的数据包含 `code` 和 `message`。流已打开后发生错误时，HTTP 状态仍可能是 `200`，应清除未完成的文字并提示重试。连接关闭但未收到 `final` 时也按失败处理。
+
+知识库不存在或参数错误会在打开流之前返回 `404` 或 `422`。有匹配片段但缺少模型密钥时返回 `503`，前端可传相同的 `question` 和 `history` 回退到 `/questions`。没有匹配片段时直接发出资料不足的 `final`。取消生成可以通过 `AbortController` 关闭请求。
+
+后端接收千问增量 JSON，提取 `answer` 字段中已经收到的文字。千问正常结束后再解析完整 JSON 并校验引用编号。模型只发起一次请求，`delta` 是生成中的预览，`final` 才是本轮可保存的回答。[百炼流式输出文档](https://help.aliyun.com/zh/model-studio/stream)
+
 ## 本地配置
 
 由后端运行环境提供 `DASHSCOPE_API_KEY`。仓库的 `.gitignore` 已排除 `.env` 文件；不要把密钥放入源码、前端或 GitHub。默认请求北京地域的 `https://dashscope.aliyuncs.com/compatible-mode/v1`；若密钥属于其他地域，将 `DASHSCOPE_BASE_URL` 设置为该地域的 OpenAI 兼容 Base URL。密钥与地域必须匹配。请使用普通按量付费模型 API 的密钥，不要把 Coding Plan 或 Token Plan 的密钥用于应用后端。
