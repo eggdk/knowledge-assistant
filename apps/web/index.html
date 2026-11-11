@@ -25,10 +25,13 @@
     <script>
       const kbId = new URLSearchParams(window.location.search).get('kbId')?.trim();
       if (kbId) document.getElementById('knowledge-assistant-loader').dataset.kbId = kbId;
+      document.addEventListener('DOMContentLoaded', () => {
+        if (kbId) document.getElementById('knowledge-management-link').href = './files.html?kbId=' + encodeURIComponent(kbId);
+      });
     </script>
   </head>
   <body>
-    <header><div class="bar"><span class="mark" aria-hidden="true">知</span>知识助手 <span class="note">/ 嵌入演示</span></div></header>
+    <header><div class="bar"><span class="mark" aria-hidden="true">知</span>知识助手 <span class="note">/ 嵌入演示</span><a id="knowledge-management-link" href="./files.html" style="margin-left:auto;color:#2768e8;font-size:14px;font-weight:400;text-decoration:none">文件管理 ↗</a></div></header>
     <main>
       <div class="eyebrow">KNOWLEDGE ASSISTANT</div>
       <h1>让知识触手可及</h1>
