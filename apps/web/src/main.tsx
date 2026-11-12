@@ -6,12 +6,14 @@ import './style.css'
 type IconName = 'chat' | 'close' | 'spark' | 'send' | 'book'
 type Source = { label?: string; relative_path: string; start_line: number; end_line: number; content: string }
 type Reply = { question: string; answer: string; status: 'generated' | 'not_generated' | 'insufficient_evidence'; sources: Source[] }
+type FinalAnswer = { answer: string; answer_status: 'generated' | 'insufficient_evidence'; citations: Source[] }
 
-async function postQuestion(path: string, question: string): Promise<Response> {
+async function postQuestion(path: string, question: string, signal: AbortSignal): Promise<Response> {
   return fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
+    signal,
   })
 }
 
@@ -22,17 +24,47 @@ async function readError(response: Response): Promise<string> {
   return `请求失败（HTTP ${response.status}），请查看后端终端。`
 }
 
-async function ask(question: string): Promise<Reply> {
+async function readAnswerStream(response: Response, onDelta: (text: string) => void): Promise<FinalAnswer> {
+  const interrupted = '回答生成中断，请重新发送问题。'
+  const reader = response.body?.pipeThrough(new TextDecoderStream()).getReader()
+  if (!reader) throw new Error(interrupted)
+
+  let pending = ''
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) throw new Error(interrupted)
+      const events = (pending + value).split(/\r?\n\r?\n/)
+      pending = events.pop() ?? ''
+      for (const event of events) {
+        const lines = event.split(/\r?\n/)
+        const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim()
+        const data = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trimStart()).join('\n')
+        if (name === 'delta') onDelta((JSON.parse(data) as { text: string }).text)
+        if (name === 'final') return JSON.parse(data) as FinalAnswer
+        if (name === 'error') throw new Error((JSON.parse(data) as { message?: string }).message || interrupted)
+      }
+    }
+  } catch (error) {
+    if (error instanceof SyntaxError || error instanceof TypeError) throw new Error(interrupted)
+    throw error
+  } finally {
+    await reader.cancel().catch(() => undefined)
+    reader.releaseLock()
+  }
+}
+
+async function ask(question: string, onDelta: (text: string) => void, signal: AbortSignal): Promise<Reply> {
   const path = `/api/knowledge-bases/${encodeURIComponent(kbId!)}`
-  const answerResponse = await postQuestion(`${path}/answers`, question)
+  const answerResponse = await postQuestion(`${path}/answers/stream`, question, signal)
   if (answerResponse.ok) {
-    const data = await answerResponse.json() as { answer: string; answer_status: Reply['status']; citations: Source[] }
+    const data = await readAnswerStream(answerResponse, onDelta)
     return { question, answer: data.answer, status: data.answer_status, sources: data.citations }
   }
   if (answerResponse.status !== 503) throw new Error(await readError(answerResponse))
 
   // The model key may be absent during local development. Retrieval still works.
-  const retrievalResponse = await postQuestion(`${path}/questions`, question)
+  const retrievalResponse = await postQuestion(`${path}/questions`, question, signal)
   if (!retrievalResponse.ok) throw new Error(await readError(retrievalResponse))
   const data = await retrievalResponse.json() as { matches: Source[] }
   return {
@@ -105,22 +137,32 @@ function Composer({ busy, onSend }: { busy: boolean; onSend: (question: string) 
 
 function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButtonElement>; onClose: () => void }) {
   const [replies, setReplies] = useState<Reply[]>([])
-  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState<{ question: string; answer: string } | null>(null)
   const [error, setError] = useState('')
   const content = useRef<HTMLElement>(null)
+  const request = useRef<AbortController | null>(null)
 
-  useEffect(() => { content.current?.scrollTo({ top: content.current.scrollHeight, behavior: 'smooth' }) }, [replies, busy, error])
+  useEffect(() => { content.current?.scrollTo({ top: content.current.scrollHeight, behavior: pending ? 'instant' : 'smooth' }) }, [replies, pending, error])
+  useEffect(() => () => request.current?.abort(), [])
 
   async function send(question: string) {
-    setBusy(true)
+    if (request.current) return
+    const controller = new AbortController()
+    request.current = controller
+    setPending({ question, answer: '' })
     setError('')
     try {
-      const reply = await ask(question)
-      setReplies((previous) => [...previous, reply])
+      const reply = await ask(question, (text) => {
+        setPending((previous) => previous && { ...previous, answer: previous.answer + text })
+      }, controller.signal)
+      if (!controller.signal.aborted) setReplies((previous) => [...previous, reply])
     } catch (reason) {
-      setError(reason instanceof TypeError ? '无法连接后端，请确认 8000 端口的服务已启动。' : reason instanceof Error ? reason.message : '连接失败，请确认后端已启动。')
+      if (!controller.signal.aborted) {
+        setError(reason instanceof TypeError ? '无法连接后端，请确认 8000 端口的服务已启动。' : reason instanceof Error ? reason.message : '连接失败，请确认后端已启动。')
+      }
     } finally {
-      setBusy(false)
+      request.current = null
+      if (!controller.signal.aborted) setPending(null)
     }
   }
   return <section className="panel" aria-label="知识助手">
@@ -130,7 +172,7 @@ function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButton
       <button ref={closeButtonRef} className="close-button" type="button" aria-label="关闭知识助手" onClick={onClose}><Icon name="close" size={20} /></button>
     </header>
     <main ref={content} className="panel-content" aria-live="polite">
-      {replies.length === 0 && <WelcomeState />}
+      {replies.length === 0 && !pending && !error && <WelcomeState />}
       {replies.map((reply, index) => <div className="exchange" key={index}>
         <p className="question-bubble">{reply.question}</p>
         <div className="answer-bubble">
@@ -145,10 +187,16 @@ function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButton
           </details>}
         </div>
       </div>)}
-      {busy && <p className="response-notice">正在检索资料并生成回答…</p>}
+      {pending && <div className="exchange">
+        <p className="question-bubble">{pending.question}</p>
+        <div className="answer-bubble" aria-busy="true">
+          <span className="answer-status">{pending.answer ? '正在生成回答…' : '正在检索资料并生成回答…'}</span>
+          {pending.answer && <p>{pending.answer}</p>}
+        </div>
+      </div>}
       {error && <p className="response-error" role="alert">{error}</p>}
     </main>
-    <Composer busy={busy} onSend={send} />
+    <Composer busy={!!pending} onSend={send} />
   </section>
 }
 

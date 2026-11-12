@@ -153,7 +153,7 @@ document
 
 ## 后端对接边界
 
-后端位于同一仓库的 `apps/api/`，与前端分别运行。前端调用 `POST /api/knowledge-bases/{kb_id}/answers`；仅当后端返回 503（缺少模型密钥）时，改用 `POST /api/knowledge-bases/{kb_id}/questions` 展示原文。Vite 开发服务把 `/api` 代理到本机 `http://127.0.0.1:8000`；此代理不适用于构建后的生产部署。
+后端位于同一仓库的 `apps/api/`，与前端分别运行。前端调用 `POST /api/knowledge-bases/{kb_id}/answers/stream`，逐段显示正文，收到最终结果后显示完整答案和引用。后端返回 503（缺少模型密钥）时，改用 `POST /api/knowledge-bases/{kb_id}/questions` 展示原文。Vite 开发服务把 `/api` 代理到本机 `http://127.0.0.1:8000`；此代理不适用于构建后的生产部署。
 
 文件管理页还调用知识库创建/列表、文档列表和上传接口。请求与响应字段、上传结果语义、前端映射及错误处理见 [前端接口说明](前端接口说明.md)。管理页详情来自文件列表返回的元信息，没有新增或假定一个文件详情 HTTP 接口。
 
