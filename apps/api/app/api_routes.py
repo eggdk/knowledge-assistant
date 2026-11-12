@@ -330,7 +330,7 @@ def upload_documents(
         list[UploadFile],
         File(
             description=(
-                "点击“选择文件”选取本机的 .md 或 .txt 文件；"
+                "点击“选择文件”选取本机的 .md、.txt、.docx、.xlsx 或 .pdf 文件；"
                 "不要在文本框中粘贴文件路径。需要多选时点击 Add string item。"
             ),
             json_schema_extra={"items": {"type": "string", "format": "binary"}},

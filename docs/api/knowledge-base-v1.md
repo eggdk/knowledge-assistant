@@ -22,6 +22,22 @@ Base URL when running locally: `http://127.0.0.1:8000`. Interactive API page: `/
 
 ## 上传
 
+网页上传和 CLI 目录导入使用同一套格式规则，扩展名大小写均可：
+
+- `.md`、`.txt`：读取 UTF-8 文本，接受 BOM。
+- `.docx`：按正文顺序提取段落和表格中的文字。
+- `.xlsx`：逐工作表读取单元格，公式使用文件中已缓存的结果。没有缓存的公式值不会被重新计算。
+- `.pdf`：逐页提取已有的文字并标出原始页码。纯扫描件须先做 OCR，加密文件须先解除保护。
+
+原件仍按原路径和字节保存。引用行号指提取后的文本行，PDF 的原始页码和 Excel 的工作表名写入提取文本。旧版 `.doc`、`.xls` 请先转存为 `.docx`、`.xlsx`。
+
+### 多格式导入联调
+
+1. 同步 `main` 后，从仓库根目录运行 `& .\.venv\Scripts\python.exe -m pip install -r apps/api/requirements.txt`，然后重启后端。
+2. 在管理页的单文件、多文件和文件夹选择中开放 `.docx`、`.xlsx`、`.pdf`，沿用现有的 `files`、`relative_paths` 和逐文件结果展示。HTTP 200 也可能包含部分失败，以每个文件的 `status` 和 `error` 为准。
+3. 每种格式准备一份含有独有关键词的文件，上传后确认 `searchable: true`，再通过问答插件提问并展开引用。可先用 `/docs` 的上传和 `/questions` 接口验证检索，这两步无需模型密钥。
+4. 将坏文件和正常文件放在同一批上传，确认页面分别显示成功和失败。若坏文件与已导入文件同路径，刷新列表后应仍能看到之前的版本。
+
 For upload, append every selected file under the repeated form field `files`. Optionally append one `relative_paths` field per file, in the **same order**, to retain a browser-selected folder's structure. For ordinary multi-file selection, omit `relative_paths`; each file's name becomes its path. A relative path must be safe and end with the file's exact name, for example `manual/intro.md` for `intro.md`. Paths in one request must be unique.
 
 Browser-side example (framework-neutral):
@@ -59,6 +75,6 @@ Since the `mdtxt-v2` update, existing databases can use `python -m app.cli chunk
 
 Failed uploads return `searchable: false` for that **attempt**, and do not replace a previously valid active version. Refresh the document list to see the existing document's real state; do not mark it unavailable simply because an update failed. Empty/whitespace-only files are rejected. A partial batch still uses HTTP 200; check `failed` and every file's `status`. Unknown knowledge base returns 404; malformed batch/path returns 422 **before any file is written**.
 
-Current limits: only UTF-8 MD/TXT (BOM accepted); at most 20 files per request and 5 MiB per file. Exact originals are saved in local SQLite by default. Upload is synchronous, so there is no `job_id`, progress polling, persistent search index, authentication, or production-scale storage yet. Run the backend on loopback or another trusted development network only; do not expose this unauthenticated API to the public Internet.
+Current HTTP limits: at most 20 files per request and 5 MiB per file. Exact originals are saved in local SQLite by default. Upload is synchronous, so there is no `job_id`, progress polling, persistent search index, authentication, or production-scale storage yet. Run the backend on loopback or another trusted development network only; do not expose this unauthenticated API to the public Internet.
 
 B-side first management page can implement: select/create knowledge base, choose one or several files (optionally a folder), submit, show per-file result, refresh the document list. The delete button can use the endpoint above. Directory tree, document detail and index progress remain separate increments. The existing widget already calls the answer API. See the [backend update and diagnosis](../learning/11-search-status-and-retrieval-diagnostics.md) for examples.

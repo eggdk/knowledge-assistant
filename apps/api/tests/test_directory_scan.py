@@ -10,7 +10,7 @@ def test_scans_nested_supported_files_in_stable_order(tmp_path) -> None:
     nested = tmp_path / "folder"
     nested.mkdir()
     (nested / "a.MD").write_text("A", encoding="utf-8")
-    (nested / "ignored.pdf").write_bytes(b"%PDF")
+    (nested / "ignored.xls").write_bytes(b"unsupported")
 
     result = scan_text_documents(tmp_path)
 

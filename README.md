@@ -7,7 +7,7 @@ New to this repository? Start with the Chinese
 [A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
 For the current team handoff, read the [November 4 evening report](docs/2026-11-04-evening-handoff.md).
 
-This repository has a **local MD/TXT import and browser-upload API**, a
+This repository has a **local directory import and file-upload API**, a
 traceable keyword retrieval baseline, and an embeddable web widget connected to
 the local answer API. The backend also accepts a question and returns matching source
 passages through [the question API v1](docs/api/question-retrieval-v1.md).
@@ -36,7 +36,8 @@ Open <http://127.0.0.1:8000/health> to check the API, or
 <http://127.0.0.1:8000/docs> to see FastAPI's interactive API documentation.
 Use `Ctrl+C` to stop the server.
 
-The `/docs` page now lets you create a knowledge base and upload MD/TXT files
+The `/docs` page lets you create a knowledge base and upload MD, TXT, DOCX,
+XLSX, and text-based PDF files
 without a separate frontend. See [Backend lesson 03](docs/learning/03-web-upload-api.md)
 for a guided walkthrough and the [A/B API handoff](docs/api/knowledge-base-v1.md)
 for exact requests and responses. Upload and document-list responses now report
@@ -54,7 +55,7 @@ Existing databases need `python -m app.cli chunks rebuild --kb YOUR_KB_ID` from
 preserves original files and document versions; restart an existing API process
 after updating its code.
 
-## Local MD/TXT import
+## Local directory import
 
 From `apps/api`, create a knowledge base and copy its printed `kb_...` ID:
 

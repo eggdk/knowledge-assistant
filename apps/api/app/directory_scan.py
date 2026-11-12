@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 
-from app.text_parser import SUPPORTED_TEXT_SUFFIXES
+from app.text_parser import SUPPORTED_DOCUMENT_SUFFIXES
 
 
 class DirectoryScanError(ValueError):
@@ -32,7 +32,7 @@ def scan_text_documents(directory: Path) -> list[tuple[str, Path]]:
 
         for name in filenames:
             candidate = current_path / name
-            if candidate.suffix.lower() not in SUPPORTED_TEXT_SUFFIXES:
+            if candidate.suffix.lower() not in SUPPORTED_DOCUMENT_SUFFIXES:
                 continue
             if candidate.is_symlink():
                 raise DirectoryScanError(f"Symlink file is not allowed: {name}")

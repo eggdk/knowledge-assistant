@@ -1,4 +1,4 @@
-"""Split normalized MD/TXT into traceable, bounded text spans.
+"""Split normalized document text into traceable, bounded text spans.
 
 Character limits are a first experiment, not token limits for a model.
 """
@@ -7,6 +7,7 @@ import re
 from bisect import bisect_left
 from dataclasses import dataclass
 
+from app.text_parser import SUPPORTED_DOCUMENT_SUFFIXES
 
 CHUNK_STRATEGY_VERSION = "mdtxt-v2"
 DEFAULT_MAX_CHARS = 600
@@ -136,8 +137,8 @@ def split_text_into_chunks(
     """
     if not (0 <= overlap_chars < min_chars <= max_chars):
         raise ValueError("Expected 0 <= overlap_chars < min_chars <= max_chars")
-    if suffix.lower() not in {".md", ".txt"}:
-        raise ValueError("Chunking supports only MD/TXT")
+    if suffix.lower() not in SUPPORTED_DOCUMENT_SUFFIXES:
+        raise ValueError(f"Unsupported document type for chunking: {suffix}")
 
     newline_offsets = [position for position, character in enumerate(content) if character == "\n"]
     chunks: list[TextChunk] = []

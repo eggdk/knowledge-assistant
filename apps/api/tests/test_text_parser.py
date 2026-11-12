@@ -20,8 +20,8 @@ def test_reads_txt_with_utf8_bom(tmp_path) -> None:
 
 
 def test_rejects_unsupported_format(tmp_path) -> None:
-    source = tmp_path / "report.pdf"
-    source.write_bytes(b"%PDF")
+    source = tmp_path / "report.xls"
+    source.write_bytes(b"unsupported")
 
     with pytest.raises(DocumentParseError, match="Unsupported file type"):
         parse_text_document(source)
