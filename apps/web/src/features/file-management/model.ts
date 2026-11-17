@@ -13,7 +13,7 @@ export const FILE_FORMATS: { extension: string; type: FileType; label: string }[
   { extension: 'xlsx', type: 'XLSX', label: 'Excel (.xlsx)' },
 ]
 export const UPLOAD_FORMATS = FILE_FORMATS.filter(
-  (format) => format.type === 'MD' || format.type === 'TXT',
+  (format) => format.type !== 'XLS',
 )
 export const FILE_ACCEPT = UPLOAD_FORMATS.map((format) => `.${format.extension}`).join(',')
 
@@ -55,9 +55,8 @@ export function candidateError(
   candidates: ImportCandidate[],
 ): string | null {
   const type = fileType(candidate.path)
-  if (!type) return '格式不支持，请选择 UTF-8 的 .md 或 .txt 文件'
-  if (type !== 'MD' && type !== 'TXT')
-    return '当前后端暂不支持该格式的真实导入，请选择 .md 或 .txt 文件'
+  if (!type) return '格式不支持，请选择 .md、.txt、.docx、.xlsx 或 .pdf 文件；旧版 .doc 请先转存为 .docx'
+  if (type === 'XLS') return '旧版 .xls 暂不支持，请先转存为 .xlsx'
   if (candidate.size > MAX_BYTES) return '超过单文件 5 MiB 限制'
   if (
     candidate.path.split('/').some((part) => part === '..' || part === '.' || !part) ||

@@ -210,8 +210,8 @@ export function ImportDialog({
               />
             </div>
             <p className="fm-help">
-              当前后端支持 UTF-8 的 MD / TXT；每批最多 20 个文件，单文件不超过 5
-              MiB。Word、PDF、Excel 暂不支持真实导入。重新选择会替换待添加列表。
+              支持 UTF-8 的 MD / TXT、DOCX、XLSX 和文本型 PDF；每批最多 20 个文件，单文件不超过 5
+              MiB。旧版 DOC / XLS 请先转换；扫描 PDF 需先 OCR，加密 PDF 需先解除保护。Excel 公式只读取已缓存的结果。重新选择会替换待添加列表。
             </p>
             {candidates.length > 0 && (
               <>

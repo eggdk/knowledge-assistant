@@ -595,6 +595,19 @@ a {
 .fm-delete-link:hover {
   color: #c74f5b;
 }
+.fm-danger {
+  color: #fff;
+  background: #ba3d4c;
+  border-color: #ba3d4c;
+}
+.fm-danger:hover:enabled {
+  color: #fff;
+  background: #a42f3d;
+}
+.fm-delete-path {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 .fm-list-footer {
   display: flex;
   align-items: center;
