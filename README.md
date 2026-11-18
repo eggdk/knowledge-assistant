@@ -12,11 +12,13 @@ traceable keyword retrieval baseline, and an embeddable web widget connected to
 the local answer API. The backend also accepts a question and returns matching source
 passages through [the question API v1](docs/api/question-retrieval-v1.md).
 An optional [Qwen answer API](docs/api/answer-generation-v1.md) now generates a
-single-turn answer from those passages when a backend `DASHSCOPE_API_KEY` is
+grounded answer from those passages when a backend `DASHSCOPE_API_KEY` is
 configured. It checks that cited passages came from the retrieval result;
-answer correctness still needs evaluation. Multi-turn chat and Agent Insight
-integration remain future work. The widget can send a question and display an
-answer with source passages, or show retrieved passages when no model key is set.
+answer correctness still needs evaluation. The widget supports streamed answers,
+up to three previous user questions for simple follow-ups, and expandable source
+passages. Document detail/download, direct QA entries, and answer feedback now have
+backend APIs, with their pages still to be connected. Agent Insight integration
+remains future work. When no model key is set, the widget shows retrieved passages.
 For a capped three-question real-model check on public Agent Insight docs,
 follow [the Qwen smoke-test lesson](docs/learning/10-real-qwen-smoke.md).
 
