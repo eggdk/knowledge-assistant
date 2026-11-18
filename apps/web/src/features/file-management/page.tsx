@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { createBase, listBases, listDocuments } from './api'
 import { Icon, Modal, Status } from './components'
 import { ImportDialog } from './import-dialog'
+import { DeleteDialog } from './delete-dialog'
 import { FILE_FORMATS, fileName, fileTypeLabel, formatSize, formatTime, PAGE_SIZE } from './model'
 import type { FileRecord, FileStatus, FileType, KnowledgeBase } from './types'
 
-type Overlay = { kind: 'create' } | { kind: 'import' } | { kind: 'detail'; file: FileRecord } | null
+type Overlay = { kind: 'create' } | { kind: 'import' } | { kind: 'detail' | 'delete'; file: FileRecord } | null
 const message = (error: unknown) =>
   error instanceof Error ? error.message : '操作失败，请稍后重试。'
 
@@ -222,6 +223,24 @@ export function FileManagement() {
     }
   }
 
+  async function afterDelete(file: FileRecord) {
+    setFiles((previous) => previous.filter((item) => item.id !== file.id))
+    setPage(currentPage > 1 && visible.length === 1 ? currentPage - 1 : currentPage)
+    setFileLoading(true)
+    setFileError('')
+    try {
+      setFiles(await listDocuments(file.kbId))
+      setLoadedKbId(file.kbId)
+      close()
+      setNotice(`已删除「${fileName(file.path)}」，同路径重新上传可恢复`)
+    } catch (reason) {
+      setFileError(message(reason))
+      throw reason
+    } finally {
+      setFileLoading(false)
+    }
+  }
+
   return (
     <>
       <header className="fm-topbar">
@@ -308,7 +327,7 @@ export function FileManagement() {
               ? '正在读取知识库列表…'
               : baseError
                 ? '暂时无法读取数据，请检查后端服务并重试。'
-                : '支持 UTF-8 的 MD/TXT 真实导入；Word、PDF、Excel 导入及文件删除暂未开放。'}
+                : '支持 MD、TXT、DOCX、XLSX 和文本型 PDF 导入；文件删除后可通过同路径重新上传恢复。'}
           </span>
           <span className="fm-demo-label">LOCAL</span>
         </div>
@@ -499,9 +518,8 @@ export function FileManagement() {
                           <span aria-hidden="true" />
                           <button
                             className="fm-text-button fm-delete-link"
-                            disabled
-                            title="后端暂未提供删除接口"
-                            aria-label={`删除 ${fileName(file.path)}（暂未开放）`}
+                            aria-label={`删除 ${fileName(file.path)}`}
+                            onClick={() => setOverlay({ kind: 'delete', file })}
                           >
                             删除
                           </button>
@@ -553,7 +571,7 @@ export function FileManagement() {
                     ? '创建知识库后，即可上传并保存你的资料。'
                     : currentFiles.length
                       ? '试试其他关键词，或清除筛选条件。'
-                      : '添加 UTF-8 编码的 Markdown 或 TXT 文件，开始整理这个知识库。'}
+                      : '添加 MD、TXT、DOCX、XLSX 或文本型 PDF 文件，开始整理这个知识库。'}
                 </p>
                 <button
                   className={`fm-button ${currentFiles.length ? '' : 'fm-primary'}`}
@@ -614,7 +632,7 @@ export function FileManagement() {
         </section>
         <p className="fm-bottom-note">
           <Icon name="info" size={14} />
-          可检索表示当前版本已有文本块，不代表模型已配置或回答一定正确；文件大小及删除能力待后端提供。
+          可检索表示当前版本已有文本块，不代表模型已配置或回答一定正确；文件大小暂未提供。
         </p>
       </main>
       <div className="fm-notice" role="status" aria-live="polite">
@@ -654,6 +672,13 @@ export function FileManagement() {
           onImported={afterImport}
         />
       )}
+      {overlay?.kind === 'delete' && (
+        <DeleteDialog
+          file={overlay.file}
+          onClose={close}
+          onDeleted={() => afterDelete(overlay.file)}
+        />
+      )}
       {overlay?.kind === 'detail' && (
         <Modal title="文件详情" description="后端保存的当前版本信息" side onClose={close}>
           <div className="fm-dialog-body">
@@ -686,7 +711,7 @@ export function FileManagement() {
             <div className="fm-inline-note">
               <Icon name="info" size={18} />
               <span>
-                展示已保存的元信息；原文预览和文件删除暂未开放。需要更新时，可重新上传同路径文件。
+                展示已保存的元信息；原文预览暂未开放。需要更新时，可重新上传同路径文件；删除可在文件列表中操作。
               </span>
             </div>
           </div>

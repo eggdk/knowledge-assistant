@@ -1,4 +1,4 @@
-import { fileType } from './model'
+import { fileName, fileType } from './model'
 import type { FileRecord, ImportCandidate, ImportResult, KnowledgeBase } from './types'
 
 const BASE_PATH = '/api/knowledge-bases'
@@ -17,7 +17,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-async function request(path: string, options: RequestInit = {}): Promise<unknown> {
+async function request(path: string, options: RequestInit = {}, emptyResponse = false): Promise<unknown> {
   const timeout = new AbortController()
   const timer = window.setTimeout(() => timeout.abort(), 60_000)
   const signal = options.signal ? AbortSignal.any([options.signal, timeout.signal]) : timeout.signal
@@ -29,7 +29,13 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
           '后端暂时不可用，请确认本地 8000 端口的服务已启动，然后重试。',
           response.status,
         )
-      if (response.status === 404) throw new ApiError('知识库不存在，请刷新知识库列表。', 404)
+      if (response.status === 404)
+        throw new ApiError(
+          options.method === 'DELETE'
+            ? '文件或知识库不存在，请关闭弹窗后刷新列表核对。'
+            : '知识库不存在，请刷新知识库列表。',
+          404,
+        )
       if (response.status === 413) throw new ApiError('上传内容过大，请减少文件数量或大小。', 413)
       let detail = ''
       try {
@@ -44,6 +50,10 @@ async function request(path: string, options: RequestInit = {}): Promise<unknown
           : `请求失败（HTTP ${response.status}），请检查输入后重试。`,
         response.status,
       )
+    }
+    if (emptyResponse) {
+      if (response.status !== 204) throw new ApiError(BAD_RESPONSE)
+      return
     }
     try {
       return (await response.json()) as unknown
@@ -120,13 +130,21 @@ export async function listDocuments(kbId: string, signal?: AbortSignal): Promise
   })
 }
 
+export async function deleteDocument(kbId: string, documentId: string): Promise<void> {
+  await request(
+    `${BASE_PATH}/${encodeURIComponent(kbId)}/documents/${encodeURIComponent(documentId)}`,
+    { method: 'DELETE' },
+    true,
+  )
+}
+
 export async function uploadDocuments(
   kbId: string,
   candidates: ImportCandidate[],
 ): Promise<ImportResult[]> {
   const form = new FormData()
   for (const candidate of candidates) {
-    form.append('files', candidate.file)
+    form.append('files', candidate.file, fileName(candidate.path))
     form.append('relative_paths', candidate.path)
   }
   const data = await request(`${BASE_PATH}/${encodeURIComponent(kbId)}/documents/import`, {

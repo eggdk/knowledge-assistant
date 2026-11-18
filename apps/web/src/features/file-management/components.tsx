@@ -108,7 +108,11 @@ export function Modal({
     // Native modal dialogs provide focus containment and make the background inert.
     return () => {
       dialog.close()
-      const target = opener?.isConnected ? opener : document.getElementById('add-files')
+      const target = [
+        opener,
+        document.getElementById('add-files'),
+        document.querySelector<HTMLElement>('.fm-create-button:not(:disabled)'),
+      ].find((element) => element?.isConnected && !element.matches(':disabled'))
       target?.focus()
     }
   }, [])

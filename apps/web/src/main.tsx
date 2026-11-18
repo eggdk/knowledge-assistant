@@ -8,11 +8,11 @@ type Source = { label?: string; relative_path: string; start_line: number; end_l
 type Reply = { question: string; answer: string; status: 'generated' | 'not_generated' | 'insufficient_evidence'; sources: Source[] }
 type FinalAnswer = { answer: string; answer_status: 'generated' | 'insufficient_evidence'; citations: Source[] }
 
-async function postQuestion(path: string, question: string, signal: AbortSignal): Promise<Response> {
+async function postQuestion(path: string, question: string, history: string[], signal: AbortSignal): Promise<Response> {
   return fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history }),
     signal,
   })
 }
@@ -54,9 +54,9 @@ async function readAnswerStream(response: Response, onDelta: (text: string) => v
   }
 }
 
-async function ask(question: string, onDelta: (text: string) => void, signal: AbortSignal): Promise<Reply> {
+async function ask(question: string, history: string[], onDelta: (text: string) => void, signal: AbortSignal): Promise<Reply> {
   const path = `/api/knowledge-bases/${encodeURIComponent(kbId!)}`
-  const answerResponse = await postQuestion(`${path}/answers/stream`, question, signal)
+  const answerResponse = await postQuestion(`${path}/answers/stream`, question, history, signal)
   if (answerResponse.ok) {
     const data = await readAnswerStream(answerResponse, onDelta)
     return { question, answer: data.answer, status: data.answer_status, sources: data.citations }
@@ -64,7 +64,7 @@ async function ask(question: string, onDelta: (text: string) => void, signal: Ab
   if (answerResponse.status !== 503) throw new Error(await readError(answerResponse))
 
   // The model key may be absent during local development. Retrieval still works.
-  const retrievalResponse = await postQuestion(`${path}/questions`, question, signal)
+  const retrievalResponse = await postQuestion(`${path}/questions`, question, history, signal)
   if (!retrievalResponse.ok) throw new Error(await readError(retrievalResponse))
   const data = await retrievalResponse.json() as { matches: Source[] }
   return {
@@ -135,8 +135,13 @@ function Composer({ busy, onSend }: { busy: boolean; onSend: (question: string) 
   </div>
 }
 
-function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButtonElement>; onClose: () => void }) {
-  const [replies, setReplies] = useState<Reply[]>([])
+function ChatPanel({ closeButtonRef, onClose, replies, onReply, onReset }: {
+  closeButtonRef: Ref<HTMLButtonElement>
+  onClose: () => void
+  replies: Reply[]
+  onReply: (reply: Reply) => void
+  onReset: () => void
+}) {
   const [pending, setPending] = useState<{ question: string; answer: string } | null>(null)
   const [error, setError] = useState('')
   const content = useRef<HTMLElement>(null)
@@ -152,10 +157,11 @@ function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButton
     setPending({ question, answer: '' })
     setError('')
     try {
-      const reply = await ask(question, (text) => {
-        setPending((previous) => previous && { ...previous, answer: previous.answer + text })
+      const history = replies.slice(-3).map((reply) => reply.question)
+      const reply = await ask(question, history, (text) => {
+        if (!controller.signal.aborted) setPending((previous) => previous && { ...previous, answer: previous.answer + text })
       }, controller.signal)
-      if (!controller.signal.aborted) setReplies((previous) => [...previous, reply])
+      if (!controller.signal.aborted) onReply(reply)
     } catch (reason) {
       if (!controller.signal.aborted) {
         setError(reason instanceof TypeError ? '无法连接后端，请确认 8000 端口的服务已启动。' : reason instanceof Error ? reason.message : '连接失败，请确认后端已启动。')
@@ -169,6 +175,7 @@ function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButton
     <header className="panel-header">
       <div className="header-icon"><Icon name="spark" size={22} /></div>
       <div className="header-copy"><h1>知识助手</h1><p>为你的学习与探索提供帮助</p></div>
+      <button className="new-conversation" type="button" disabled={!!pending || !replies.length} onClick={onReset}>新对话</button>
       <button ref={closeButtonRef} className="close-button" type="button" aria-label="关闭知识助手" onClick={onClose}><Icon name="close" size={20} /></button>
     </header>
     <main ref={content} className="panel-content" aria-live="polite">
@@ -202,6 +209,8 @@ function ChatPanel({ closeButtonRef, onClose }: { closeButtonRef: Ref<HTMLButton
 
 function App() {
   const [open, setOpen] = useState(false)
+  const [replies, setReplies] = useState<Reply[]>([])
+  const [conversation, setConversation] = useState(0)
   const launcher = useRef<HTMLButtonElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
 
@@ -238,7 +247,18 @@ function App() {
       hide()
     }
   }}>
-    {open && <ChatPanel closeButtonRef={closeButton} onClose={hide} />}
+    {open && <ChatPanel
+      key={`${kbId}:${conversation}`}
+      closeButtonRef={closeButton}
+      onClose={hide}
+      replies={replies}
+      onReply={(reply) => setReplies((previous) => [...previous, reply])}
+      onReset={() => {
+        setReplies([])
+        setConversation((previous) => previous + 1)
+        requestAnimationFrame(() => closeButton.current?.focus())
+      }}
+    />}
     <Launcher open={open} buttonRef={launcher} onToggle={open ? hide : show} />
   </div>
 }
