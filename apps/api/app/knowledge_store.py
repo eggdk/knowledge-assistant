@@ -66,6 +66,23 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_kb_version
     ON document_chunks(kb_id, document_id, version_no, strategy_version);
+CREATE TABLE IF NOT EXISTS answer_records (
+    id TEXT PRIMARY KEY,
+    kb_id TEXT NOT NULL REFERENCES knowledge_bases(id),
+    question TEXT NOT NULL,
+    history_json TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    answer_status TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_answers_kb_created
+    ON answer_records(kb_id, created_at, id);
+CREATE TABLE IF NOT EXISTS answer_feedback (
+    answer_id TEXT PRIMARY KEY REFERENCES answer_records(id),
+    rating TEXT NOT NULL CHECK(rating IN ('helpful', 'unhelpful')),
+    comment TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -75,6 +92,7 @@ class ImportResult:
     status: str
     version_no: int
     searchable: bool
+    document_id: str
 
 
 @dataclass(frozen=True)
@@ -154,6 +172,28 @@ def knowledge_base_exists(database_path: Path, kb_id: str) -> bool:
         ).fetchone() is not None
 
 
+def get_document_version(
+    database_path: Path, kb_id: str, document_id: str, version_no: int | None = None,
+) -> dict | None:
+    """Read an active document's current or explicitly selected saved version."""
+    with _connect(database_path) as connection:
+        row = connection.execute(
+            """SELECT d.id, d.source_path, v.version_no, v.sha256, v.imported_at,
+                      v.content, v.original_bytes
+               FROM active_documents AS d JOIN document_versions AS v
+                 ON v.document_id = d.id
+                AND v.version_no = COALESCE(?, d.active_version_no)
+               WHERE d.kb_id = ? AND d.id = ?""",
+            (version_no, kb_id, document_id),
+        ).fetchone()
+    if row is None:
+        return None
+    return dict(zip(
+        ("id", "relative_path", "version_no", "sha256", "imported_at", "content", "original_bytes"),
+        row, strict=True,
+    ))
+
+
 def validate_relative_path(relative_path: str) -> None:
     """Reject absolute paths and path traversal before any import is written."""
     if (
@@ -212,6 +252,7 @@ def import_document(
     data: bytes,
     *,
     retain_original: bool,
+    require_active_document_id: str | None = None,
 ) -> ImportResult:
     """Import one selected file; only a successful parse changes active data."""
     validate_relative_path(relative_path)
@@ -236,6 +277,14 @@ def import_document(
             (kb_id, relative_path),
         ).fetchone()
 
+        if require_active_document_id is not None:
+            active = connection.execute(
+                "SELECT id FROM active_documents WHERE id = ? AND kb_id = ? AND source_path = ?",
+                (require_active_document_id, kb_id, relative_path),
+            ).fetchone()
+            if active is None:
+                raise LookupError("Document was deleted before the edit could be saved")
+
         if existing is not None and existing[2] == digest:
             has_chunks = connection.execute(
                 """SELECT 1 FROM document_chunks
@@ -255,7 +304,7 @@ def import_document(
             connection.execute(
                 "DELETE FROM document_deletions WHERE document_id = ?", (existing[0],)
             )
-            return ImportResult(relative_path, "unchanged", existing[1], bool(chunks))
+            return ImportResult(relative_path, "unchanged", existing[1], bool(chunks), existing[0])
 
         if existing is None:
             document_id = "doc_" + uuid4().hex
@@ -295,7 +344,7 @@ def import_document(
                 "DELETE FROM document_deletions WHERE document_id = ?", (document_id,)
             )
 
-    return ImportResult(relative_path, status, version_no, bool(chunks))
+    return ImportResult(relative_path, status, version_no, bool(chunks), document_id)
 
 
 def delete_document(database_path: Path, kb_id: str, document_id: str) -> bool:

@@ -6,8 +6,10 @@ import re
 from contextlib import aclosing
 from pathlib import Path
 from typing import Annotated, Literal
+from urllib.parse import quote
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -21,9 +23,11 @@ from app.answer_generation import (
     stream_answer,
 )
 from app.config import get_database_path
+from app.answer_records import list_answer_records, save_answer, set_feedback
 from app.knowledge_store import (
     create_knowledge_base,
     delete_document,
+    get_document_version,
     import_document,
     knowledge_base_exists,
     list_document_records,
@@ -72,6 +76,66 @@ class FileUploadResult(BaseModel):
     )
 
 
+class DocumentDetailView(BaseModel):
+    id: str
+    relative_path: str
+    version_no: int
+    sha256: str
+    imported_at: str
+    content: str
+    original_available: bool
+    original_size_bytes: int | None
+
+
+class QAPairRequest(BaseModel):
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)]
+    answer: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
+
+
+class QAPairView(FileUploadResult):
+    document_id: str
+
+
+def _save_qa_pair(
+    database_path: Path, kb_id: str, relative_path: str, request: QAPairRequest,
+    document_id: str | None = None,
+) -> QAPairView:
+    # Plain text prevents administrator-entered Markdown from changing section boundaries.
+    content = f"问题：\n{request.question}\n\n回答：\n{request.answer}\n"
+    result = import_document(
+        database_path, kb_id, relative_path, content.encode("utf-8"), retain_original=True,
+        require_active_document_id=document_id,
+    )
+    return QAPairView(
+        document_id=result.document_id, relative_path=result.relative_path,
+        status=result.status, version_no=result.version_no, searchable=result.searchable,
+    )
+
+
+@router.post("/{kb_id}/qa-pairs", response_model=QAPairView, status_code=201)
+def create_qa_pair(
+    kb_id: str, request: QAPairRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> QAPairView:
+    _require_knowledge_base(database_path, kb_id)
+    return _save_qa_pair(database_path, kb_id, f"qa/{uuid4().hex}.txt", request)
+
+
+@router.put("/{kb_id}/qa-pairs/{document_id}", response_model=QAPairView)
+def update_qa_pair(
+    kb_id: str, document_id: str, request: QAPairRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> QAPairView:
+    document = _require_document(database_path, kb_id, document_id)
+    relative_path = document["relative_path"]
+    if not (relative_path.startswith("qa/") and relative_path.endswith(".txt")):
+        raise HTTPException(status_code=422, detail="This document is not a QA-pair entry")
+    try:
+        return _save_qa_pair(database_path, kb_id, relative_path, request, document_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail="QA entry was deleted before saving") from exc
+
+
 class BatchUploadResponse(BaseModel):
     files: list[FileUploadResult]
     failed: int
@@ -117,11 +181,50 @@ class CitationView(SourceMatchView):
 
 
 class GenerateAnswerResponse(BaseModel):
+    answer_id: str
     question: str
     answer: str
     answer_status: Literal["generated", "insufficient_evidence"]
     model: str | None
     citations: list[CitationView]
+
+
+class FeedbackRequest(BaseModel):
+    rating: Literal["helpful", "unhelpful"]
+    comment: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
+
+
+class AnswerRecordView(BaseModel):
+    answer_id: str
+    question: str
+    history: list[str]
+    response: GenerateAnswerResponse
+    created_at: str
+    rating: Literal["helpful", "unhelpful"] | None
+    comment: str | None
+    feedback_updated_at: str | None
+
+
+@router.put("/{kb_id}/answers/{answer_id}/feedback", status_code=204, response_class=Response)
+def put_feedback(
+    kb_id: str, answer_id: str, request: FeedbackRequest,
+    database_path: Annotated[Path, Depends(get_database_path)],
+) -> Response:
+    _require_knowledge_base(database_path, kb_id)
+    if not set_feedback(database_path, kb_id, answer_id, request.rating, request.comment):
+        raise HTTPException(status_code=404, detail="Answer not found in this knowledge base")
+    return Response(status_code=204)
+
+
+@router.get("/{kb_id}/answer-records", response_model=list[AnswerRecordView])
+def get_answer_records(
+    kb_id: str, database_path: Annotated[Path, Depends(get_database_path)],
+    needs_review: bool = False,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[dict]:
+    _require_knowledge_base(database_path, kb_id)
+    return list_answer_records(database_path, kb_id, needs_review=needs_review, limit=limit, offset=offset)
 
 
 def _require_knowledge_base(database_path: Path, kb_id: str) -> None:
@@ -180,6 +283,44 @@ def get_documents(
         )
         for record in list_document_records(database_path, kb_id)
     ]
+
+
+def _require_document(database_path: Path, kb_id: str, document_id: str, version_no: int | None = None) -> dict:
+    _require_knowledge_base(database_path, kb_id)
+    document = get_document_version(database_path, kb_id, document_id, version_no)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document version not found in this knowledge base")
+    return document
+
+
+@router.get("/{kb_id}/documents/{document_id}", response_model=DocumentDetailView)
+def get_document(
+    kb_id: str, document_id: str,
+    database_path: Annotated[Path, Depends(get_database_path)],
+    version_no: Annotated[int | None, Query(ge=1)] = None,
+) -> DocumentDetailView:
+    document = _require_document(database_path, kb_id, document_id, version_no)
+    original = document.pop("original_bytes")
+    return DocumentDetailView(
+        **document, original_available=original is not None,
+        original_size_bytes=len(original) if original is not None else None,
+    )
+
+
+@router.get("/{kb_id}/documents/{document_id}/download", response_class=Response)
+def download_document(
+    kb_id: str, document_id: str,
+    database_path: Annotated[Path, Depends(get_database_path)],
+    version_no: Annotated[int | None, Query(ge=1)] = None,
+) -> Response:
+    document = _require_document(database_path, kb_id, document_id, version_no)
+    if document["original_bytes"] is None:
+        raise HTTPException(status_code=404, detail="Original copy was not retained for this version")
+    filename = document["relative_path"].rsplit("/", 1)[-1]
+    return Response(
+        content=document["original_bytes"], media_type="application/octet-stream",
+        headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe="")},
+    )
 
 
 @router.delete("/{kb_id}/documents/{document_id}", status_code=204, response_class=Response)
@@ -260,20 +401,25 @@ def answer_question(
         len(result.citation_ids),
     )
 
-    return _answer_view(question, result, bool(hits))
+    return _answer_view(database_path, kb_id, question, request.history, result, bool(hits))
 
 
-def _answer_view(question: str, result: GeneratedAnswer, has_matches: bool) -> GenerateAnswerResponse:
-    return GenerateAnswerResponse(
-        question=question,
-        answer=result.answer,
-        answer_status=result.status,
-        model=MODEL_NAME if has_matches else None,
-        citations=[
-            CitationView(label=label, **_source_match(hit).model_dump())
+def _answer_view(
+    database_path: Path, kb_id: str, question: str, history: list[str],
+    result: GeneratedAnswer, has_matches: bool,
+) -> GenerateAnswerResponse:
+    response = {
+        "question": question,
+        "answer": result.answer,
+        "answer_status": result.status,
+        "model": MODEL_NAME if has_matches else None,
+        "citations": [
+            CitationView(label=label, **_source_match(hit).model_dump()).model_dump()
             for label, hit in zip(result.citation_ids, result.cited_hits, strict=True)
         ],
-    )
+    }
+    answer_id = save_answer(database_path, kb_id, question, history, response)
+    return GenerateAnswerResponse(answer_id=answer_id, **response)
 
 
 def _event(event: str, data: dict) -> str:
@@ -310,7 +456,7 @@ def stream_answer_question(
                     if isinstance(part, str):
                         yield _event("delta", {"text": part})
                     else:
-                        view = _answer_view(question, part, bool(hits))
+                        view = _answer_view(database_path, kb_id, question, request.history, part, bool(hits))
                         logger.info("answer stream kb=%s status=%s citations=%d", kb_id, part.status, len(part.cited_hits))
                         yield _event("final", view.model_dump())
         except (ModelAnswerError, ModelNotConfigured):

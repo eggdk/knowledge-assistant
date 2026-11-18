@@ -14,6 +14,7 @@
 
 ```json
 {
+  "answer_id": "ans_...",
   "question": "Trace 在哪里查看？",
   "answer": "在 Trace 页面查看调用记录。",
   "answer_status": "generated",
@@ -39,6 +40,8 @@
 缺少 API Key 且存在匹配片段时返回 503；模型服务失败或返回不合法的答案时返回 502。知识库不存在返回 404；空白问题和非法 `limit` 返回 422。`limit` 默认 5，范围 1～8。
 
 原有 `POST /api/knowledge-bases/{kb_id}/questions` 继续只返回原文片段，供 B 岗现有页面联调。B 岗准备展示模型答案时，再调用 `/answers` 并根据 `answer_status` 显示答案或“资料不足”；引用要显示文件名和行号。
+
+2026-11-18 起，普通答案和流式 `final` 都携带 `answer_id`，最终问题、回答及引用快照会写入本机 SQLite。反馈接口和资料不足问题清单见[后端交接说明](../2026-11-18-backend-handoff.md#第三轮保存回答收集反馈和查看待补充问题)。
 
 `citations[].label` 对应答案文字中的 `[S1]` 等编号；前端应按编号把答案中的引用与文件、行号关联。引用列表的顺序不一定等于编号大小，不能靠数组下标猜编号。
 

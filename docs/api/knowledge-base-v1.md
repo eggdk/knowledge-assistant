@@ -4,6 +4,8 @@ Updated 2026-11-10: the upload and document-list responses now report actual cur
 
 Base URL when running locally: `http://127.0.0.1:8000`. Interactive API page: `/docs`.
 
+2026-11-18 新增文档详情、版本原件下载、问答对录入和反馈记录。端点、字段、前端对接步骤见[三轮后端交接说明](../2026-11-18-backend-handoff.md)。
+
 | Action | Method and path | Request | Response |
 |---|---|---|---|
 | Create a knowledge base | `POST /api/knowledge-bases` | JSON `{"name":"课程资料"}` | `201`, `{"id":"kb_...","name":"课程资料"}` |

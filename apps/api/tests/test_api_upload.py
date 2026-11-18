@@ -13,7 +13,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 from app.api_routes import MAX_UPLOAD_BYTES
 from app.cli import main as cli_main
 from app.config import get_database_path
-from app.knowledge_store import list_documents, rebuild_chunks
+from app.knowledge_store import import_document, list_documents, rebuild_chunks
 from app.main import app
 
 
@@ -33,6 +33,42 @@ def create_base(client: TestClient) -> str:
     assert response.status_code == 201
     assert response.json()["name"] == "课程资料"
     return response.json()["id"]
+
+
+def test_detail_and_download_are_versioned_scoped_and_hide_deleted_documents(client):
+    http, database = client
+    kb_id = create_base(http)
+    base = f"/api/knowledge-bases/{kb_id}"
+    original = "# 原始资料\r\n旧内容".encode()
+    http.post(base + "/documents/import", files={"files": ("中文.md", original)})
+    document_id = http.get(base + "/documents").json()[0]["id"]
+    url = base + "/documents/" + document_id
+    detail = http.get(url).json()
+    assert detail["content"] == "# 原始资料\n旧内容"
+    assert detail["original_size_bytes"] == len(original)
+    assert detail["original_available"] is True
+    download = http.get(url + "/download")
+    assert download.content == original
+    assert "filename*=UTF-8''%E4%B8%AD%E6%96%87.md" in download.headers["content-disposition"]
+    http.post(base + "/documents/import", files={"files": ("中文.md", "新内容".encode())})
+    assert http.get(url).json()["version_no"] == 2
+    assert http.get(url, params={"version_no": 1}).json()["content"] == detail["content"]
+    assert http.get(url + "/download?version_no=1").content == original
+    assert http.get(url + "?version_no=3").status_code == 404
+    assert http.get(url + "?version_no=0").status_code == 422
+    other = create_base(http)
+    for suffix in ("", "/download"):
+        assert http.get(f"/api/knowledge-bases/{other}/documents/{document_id}" + suffix).status_code == 404
+    http.delete(url)
+    assert http.get(url).status_code == 404
+    assert http.get(url + "/download?version_no=1").status_code == 404
+
+    import_document(database, kb_id, "without-copy.txt", b"saved text", retain_original=False)
+    record = http.get(base + "/documents").json()[0]
+    no_copy = base + "/documents/" + record["id"]
+    assert http.get(no_copy).json()["original_size_bytes"] is None
+    assert http.get(no_copy).json()["content"] == "saved text"
+    assert http.get(no_copy + "/download").status_code == 404
 
 
 def word_bytes(text: str) -> bytes:

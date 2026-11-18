@@ -5,7 +5,7 @@ BUAA course project: an embeddable knowledge-base Q&A assistant.
 New to this repository? Start with the Chinese
 [project architecture map](docs/learning/00-project-architecture.md), then follow the
 [A-role learning path from zero](docs/learning/00-from-zero-to-current.md).
-For the current team handoff, read the [November 4 evening report](docs/2026-11-04-evening-handoff.md).
+For the current backend handoff, read the [November 18 update](docs/2026-11-18-backend-handoff.md).
 
 This repository has a **local directory import and file-upload API**, a
 traceable keyword retrieval baseline, and an embeddable web widget connected to

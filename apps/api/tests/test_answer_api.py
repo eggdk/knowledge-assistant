@@ -229,9 +229,13 @@ def test_stream_delivers_text_and_validates_final_citations(client, monkeypatch,
         assert answer["answer"] == "在 Trace 页面查看。 [S1]"
         assert answer["question"] == "它在哪里？"
         assert answer["citations"][0]["relative_path"] == "guide.md"
+        records = client.get(f"/api/knowledge-bases/{kb_id}/answer-records").json()
+        assert len(records) == 1
+        assert records[0]["response"] == answer
     else:
         assert events[-1][0] == "error"
         assert events[-1][1]["code"] == "model_error"
+        assert client.get(f"/api/knowledge-bases/{kb_id}/answer-records").json() == []
     assert len(calls) == 1
     assert closed
 
