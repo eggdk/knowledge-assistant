@@ -16,8 +16,9 @@ grounded answer from those passages when a backend `DASHSCOPE_API_KEY` is
 configured. It checks that cited passages came from the retrieval result;
 answer correctness still needs evaluation. The widget supports streamed answers,
 up to three previous user questions for simple follow-ups, and expandable source
-passages. Document detail/download, direct QA entries, and answer feedback now have
-backend APIs, with their pages still to be connected. Agent Insight integration
+passages. Answer feedback buttons save a helpful/unhelpful rating to the backend.
+Document detail/download, direct QA entries, and the review list have backend APIs,
+with their pages still to be connected. Agent Insight integration
 remains future work. When no model key is set, the widget shows retrieved passages.
 For a capped three-question real-model check on public Agent Insight docs,
 follow [the Qwen smoke-test lesson](docs/learning/10-real-qwen-smoke.md).

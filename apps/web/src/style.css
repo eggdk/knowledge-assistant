@@ -27,6 +27,12 @@ button:focus-visible, textarea:focus-visible { outline: 3px solid #88b7ff; outli
 .answer-bubble { padding: 12px; border: 1px solid #e5ebf4; border-radius: 12px 12px 12px 2px; color: #294263; background: #fbfdff; }
 .answer-bubble > p { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .answer-status { color: #5b769c; font-size: 11px; font-weight: 700; }
+.answer-feedback { margin-top: 12px; padding-top: 8px; border-top: 1px solid #e5ebf4; }
+.feedback-actions { display: flex; gap: 8px; }
+.feedback-actions button { padding: 5px 9px; border: 1px solid #dfe8f3; border-radius: 6px; background: white; color: #536a87; cursor: pointer; font-size: 12px; }
+.feedback-actions button[aria-pressed="true"] { border-color: #276be8; color: #2468d5; background: #edf4ff; }
+.feedback-actions button:disabled { opacity: .6; cursor: wait; }
+.feedback-status { margin: 6px 0 0; color: #657b98; font-size: 11px; }
 .sources { margin-top: 12px; border-top: 1px solid #e5ebf4; padding-top: 8px; }
 .sources summary { cursor: pointer; color: #2468d5; font-weight: 600; }
 .source { padding: 9px 0; border-bottom: 1px solid #edf1f7; }

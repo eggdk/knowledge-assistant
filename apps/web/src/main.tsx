@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Ref } from 'react'
 import { createRoot } from 'react-dom/client'
+import { AnswerFeedback, submitFeedback } from './answer-feedback'
+import type { FeedbackRating } from './answer-feedback'
 import './style.css'
 
 type IconName = 'chat' | 'close' | 'spark' | 'send' | 'book'
 type Source = { label?: string; relative_path: string; start_line: number; end_line: number; content: string }
-type Reply = { question: string; answer: string; status: 'generated' | 'not_generated' | 'insufficient_evidence'; sources: Source[] }
-type FinalAnswer = { answer: string; answer_status: 'generated' | 'insufficient_evidence'; citations: Source[] }
+type Reply = {
+  question: string
+  answer: string
+  status: 'generated' | 'not_generated' | 'insufficient_evidence'
+  sources: Source[]
+  answerId?: string
+  feedback?: FeedbackRating
+  feedbackPending?: boolean
+  feedbackError?: string
+}
+type FinalAnswer = { answer_id?: string; answer: string; answer_status: 'generated' | 'insufficient_evidence'; citations: Source[] }
 
 async function postQuestion(path: string, question: string, history: string[], signal: AbortSignal): Promise<Response> {
   return fetch(path, {
@@ -59,7 +70,10 @@ async function ask(question: string, history: string[], onDelta: (text: string) 
   const answerResponse = await postQuestion(`${path}/answers/stream`, question, history, signal)
   if (answerResponse.ok) {
     const data = await readAnswerStream(answerResponse, onDelta)
-    return { question, answer: data.answer, status: data.answer_status, sources: data.citations }
+    return {
+      question, answer: data.answer, status: data.answer_status, sources: data.citations,
+      answerId: typeof data.answer_id === 'string' && data.answer_id.trim() ? data.answer_id : undefined,
+    }
   }
   if (answerResponse.status !== 503) throw new Error(await readError(answerResponse))
 
@@ -135,12 +149,13 @@ function Composer({ busy, onSend }: { busy: boolean; onSend: (question: string) 
   </div>
 }
 
-function ChatPanel({ closeButtonRef, onClose, replies, onReply, onReset }: {
+function ChatPanel({ closeButtonRef, onClose, replies, onReply, onReset, onFeedback }: {
   closeButtonRef: Ref<HTMLButtonElement>
   onClose: () => void
   replies: Reply[]
   onReply: (reply: Reply) => void
   onReset: () => void
+  onFeedback: (answerId: string, rating: FeedbackRating) => void
 }) {
   const [pending, setPending] = useState<{ question: string; answer: string } | null>(null)
   const [error, setError] = useState('')
@@ -192,6 +207,12 @@ function ChatPanel({ closeButtonRef, onClose, replies, onReply, onReset }: {
               <p>{source.content}</p>
             </div>)}
           </details>}
+          {reply.answerId && <AnswerFeedback
+            rating={reply.feedback}
+            busy={!!reply.feedbackPending}
+            error={reply.feedbackError}
+            onRate={(rating) => onFeedback(reply.answerId!, rating)}
+          />}
         </div>
       </div>)}
       {pending && <div className="exchange">
@@ -211,6 +232,7 @@ function App() {
   const [open, setOpen] = useState(false)
   const [replies, setReplies] = useState<Reply[]>([])
   const [conversation, setConversation] = useState(0)
+  const feedbackRequests = useRef(new Set<string>())
   const launcher = useRef<HTMLButtonElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
 
@@ -241,6 +263,29 @@ function App() {
     requestAnimationFrame(() => launcher.current?.focus())
   }
 
+  async function rateAnswer(answerId: string, rating: FeedbackRating) {
+    if (!kbId || feedbackRequests.current.has(answerId)) return
+    const reply = replies.find((item) => item.answerId === answerId)
+    if (!reply || (reply.feedback === rating && !reply.feedbackError)) return
+    feedbackRequests.current.add(answerId)
+    setReplies((previous) => previous.map((item) => item.answerId === answerId
+      ? { ...item, feedbackPending: true, feedbackError: undefined } : item))
+    try {
+      await submitFeedback(kbId, answerId, rating)
+      setReplies((previous) => previous.map((item) => item.answerId === answerId
+        ? { ...item, feedback: rating, feedbackPending: false, feedbackError: undefined } : item))
+    } catch (reason) {
+      let error = '反馈提交失败，请重试。'
+      if (reason instanceof TypeError) error = '无法连接后端，请检查连接后重试。'
+      else if (reason instanceof Error && reason.name === 'TimeoutError') error = '反馈提交超时，请重试。'
+      else if (reason instanceof Error) error = reason.message
+      setReplies((previous) => previous.map((item) => item.answerId === answerId
+        ? { ...item, feedbackPending: false, feedbackError: error } : item))
+    } finally {
+      feedbackRequests.current.delete(answerId)
+    }
+  }
+
   return <div className={`widget ${open ? 'is-open' : ''}`} onKeyDown={(event) => {
     if (event.key === 'Escape' && open) {
       event.preventDefault()
@@ -253,6 +298,7 @@ function App() {
       onClose={hide}
       replies={replies}
       onReply={(reply) => setReplies((previous) => [...previous, reply])}
+      onFeedback={(answerId, rating) => { void rateAnswer(answerId, rating) }}
       onReset={() => {
         setReplies([])
         setConversation((previous) => previous + 1)
